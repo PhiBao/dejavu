@@ -358,12 +358,14 @@ export async function verifyCitations(
   const questions: Record<string, ReturnType<typeof choice>> = {};
   pool.forEach((_item, i) => {
     questions[`cite_${i}`] = choice(
-      `Consider ONLY the pair at \`pairs[${i}]\`. How does its source text relate to its claim?`,
+      `Consider ONLY the pair at \`pairs[${i}]\`. How does its source text relate to the answer?`,
       {
-        supports: "The source states the claim or directly implies it is true.",
-        contradicts: "The source states the opposite or implies the claim is false.",
+        supports:
+          "The source is consistent with the answer and contributes evidence for it. For a multi-part answer (a count, a list, several people), the source only needs to support the part about the person or fact it mentions.",
+        contradicts:
+          "The source contradicts the answer — it says something incompatible with what the answer claims.",
         says_nothing:
-          "The source does not address what the claim asserts, either way.",
+          "The source neither supports nor contradicts the answer; it is about something else.",
       },
     );
   });

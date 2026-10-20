@@ -32,6 +32,15 @@ const schema = z.object({
   LLM_FALLBACK_BASE_URL: z.string().default("https://openrouter.ai/api/v1"),
   LLM_FALLBACK_API_KEY: z.string().optional(),
   LLM_FALLBACK_MODEL: z.string().default("mistralai/mistral-small"),
+  // Nebius Token Factory — OpenAI-compatible, stable keys, open-weight models
+  // (Qwen / Kimi / GLM / DeepSeek). Our primary writer.
+  TOKENFACTORY_API_KEY: z.string().optional(),
+  TOKENFACTORY_BASE_URL: z
+    .string()
+    .default("https://api.tokenfactory.nebius.com/v1"),
+  TOKENFACTORY_MODEL: z
+    .string()
+    .default("Qwen/Qwen3-30B-A3B-Instruct-2507"),
   // Keyless open-weights gateway used only when every configured provider is
   // dead, so a demo never falls back to regex-written prose. Set "off" to
   // disable it entirely.

@@ -37,6 +37,16 @@ export function llmProviders(): LlmProvider[] {
   const e = env();
   const out: LlmProvider[] = [];
 
+  // 1. Nebius Token Factory — our primary writer (open-weight Qwen).
+  if (e.TOKENFACTORY_API_KEY) {
+    out.push({
+      name: "token-factory",
+      baseUrl: e.TOKENFACTORY_BASE_URL,
+      apiKey: e.TOKENFACTORY_API_KEY,
+      model: e.TOKENFACTORY_MODEL,
+    });
+  }
+  // 2. Any other OpenAI-compatible provider.
   if (e.LLM_PROVIDER === "openai-compatible" && e.LLM_API_KEY) {
     out.push({
       name: e.LLM_PROVIDER_NAME || "openai-compatible",
@@ -45,6 +55,7 @@ export function llmProviders(): LlmProvider[] {
       model: e.LLM_MODEL,
     });
   }
+  // 3. Bedrock Mantle (Mistral Voxtral Mini 3B) — AWS-native, short-lived keys.
   if (e.BEDROCK_API_KEY) {
     out.push({
       name: "bedrock",
@@ -53,6 +64,7 @@ export function llmProviders(): LlmProvider[] {
       model: e.BEDROCK_TEXT_MODEL_ID,
     });
   }
+  // 4. Explicit secondary.
   if (e.LLM_FALLBACK_API_KEY) {
     out.push({
       name: e.LLM_FALLBACK_NAME || "fallback",
