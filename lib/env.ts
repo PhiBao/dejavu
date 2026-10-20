@@ -34,6 +34,15 @@ const schema = z.object({
   TYPESAFE_API_KEY: z.string().optional(),
   TYPESAFE_MODEL_ID: z.string().default("jev-latest"),
 
+  // Tatum — independent onchain verification of the memory layer via Sui RPC
+  // (Walrus system epoch, MemWalAccount delegation, Blob objects + expiry).
+  // Optional: without it the app trusts the relayer and skips chain checks.
+  TATUM_API_KEY: z.string().optional(),
+  TATUM_SUI_RPC_URL: z.string().default("https://sui-mainnet.gateway.tatum.io"),
+  TATUM_WALRUS_SYSTEM_OBJECT_ID: z
+    .string()
+    .default("0x2134d52768ea07e8c43570ef975eb3e4c27a39fa6396bef985b5abc58d03ddd2"),
+
   // Local projection store (people, facts, commitments, users). Overridable
   // for tests; defaults to ./data/recall.json.
   RECALL_DATA_PATH: z.string().optional(),

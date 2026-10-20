@@ -13,6 +13,9 @@ import { TodayCard } from "@/components/TodayCard";
 import { ApiKeysPanel } from "@/components/ApiKeysPanel";
 import { BlobChip } from "@/components/BlobChip";
 import { DemoLoader } from "@/components/DemoLoader";
+import { OnchainPanel } from "@/components/OnchainPanel";
+import { isTatumConfigured, verifyMemoriesOnchain } from "@/lib/tatum";
+import { loadStore } from "@/lib/store";
 
 export default async function AppPage() {
   const user = await getCurrentUser();
@@ -24,6 +27,16 @@ export default async function AppPage() {
     recentMemories(user.id, 8),
     listApiKeys(user.id),
   ]);
+
+  // Independent onchain proof of this user's memories (Tatum Sui RPC).
+  // Cached inside lib/tatum, so this is cheap on repeat renders.
+  let onchain = null;
+  if (isTatumConfigured()) {
+    const blobIds = loadStore()
+      .memories.filter((m) => m.user_id === user.id && m.walrus_blob_id)
+      .map((m) => m.walrus_blob_id as string);
+    onchain = await verifyMemoriesOnchain(blobIds);
+  }
 
   const firstName = user.name?.split(" ")[0] ?? "there";
 
@@ -99,6 +112,7 @@ export default async function AppPage() {
 
         {/* Right: Today feed + people */}
         <aside className="flex flex-col gap-8">
+          <OnchainPanel data={onchain} />
           <div>
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink/40">
               Today · follow up

@@ -69,8 +69,13 @@ said lives in Walrus:
 - **Recovery** (`pnpm memwal:durability`): the relayer's index is rebuildable
   from Walrus alone via `restore()`, and semantic recall still answers **with
   the local projection deleted** — because the memories were never in the app.
-  Storage runs 50 epochs (≈ 2 years, 2-week epochs), reported by `/api/health`
-  rather than left to a question.
+- **Verified, not asserted** (`lib/tatum.ts`): Tatum's Sui RPC independently
+  confirms each memory's Walrus `Blob` object, the MemWal account's delegate
+  keys, and the **real** storage window. Measured today: blobs registered at
+  epoch 40 with storage through epoch 55 (196 days, to **2027-05-04**) — the
+  relayer buys 15 epochs, not the SDK's default 50. `/api/health` and the
+  Memory Health card show the chain's answer, so a wrong assumption can't
+  quietly become a lost memory.
 - **Multi-tenant isolation** (`lib/memwal.ts`): one operator MemWalAccount
   pays for storage (no per-user funding); each app user gets a deterministic
   namespace. Recall is scoped per account + namespace; the delegate key never
@@ -328,6 +333,10 @@ projection is future work (Walrus blobs are already Seal-encrypted).
 - **Walrus Memory (mainnet)** — the memory layer: encrypted blobs, semantic
   recall, per-user namespaces. Blob proof: `GET /api/health` →
   `counts.walrus_blobs`.
+- **Tatum (Sui RPC)** — independent onchain verification: Walrus epoch and
+  capacity, MemWalAccount delegation (is our agent's key registered?), every
+  memory's `Blob` object, and the real storage expiry. Proof:
+  `pnpm tatum:verify`.
 - **TypeSafe (Jev)** — every decision: intent, identity, relevance, citation
   verdicts. Proof: `pnpm judge:verify`.
 - **Amazon Bedrock — Mantle endpoint** (Chat Completions via Voxtral Mini 3B,

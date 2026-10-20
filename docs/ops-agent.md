@@ -219,9 +219,11 @@ below is a command in this repo, not a claim in prose:
   (`recall-<userId>`), blobs, and expiry. Anyone can fetch a blob by id from
   the public aggregator and get **ciphertext** — the app surfaces this as a
   ⬡ chip next to each memory: *publicly verifiable, privately readable*.
-- **Lifetime:** the SDK stores for 50 epochs (≈ 2 years on mainnet, 2-week
-  epochs). `GET /api/health` reports this explicitly rather than leaving a
-  judge to wonder.
+- **Lifetime:** the onchain storage window is authoritative, and it is shorter
+  than the SDK default. Measured via Tatum RPC: blobs at epoch 40 with storage
+  through epoch 55 → **196 days**, not 50 epochs. `GET /api/health` and the
+  Memory Health card report the chain's answer (`end_epoch` → real date), and
+  warn before expiry instead of discovering it as amnesia.
 
 ## Demo it in the video
 

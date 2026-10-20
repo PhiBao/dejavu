@@ -22,7 +22,8 @@
     "judge:verify": "tsx scripts/verify-judge.ts",
     "verify:e2e": "tsx scripts/verify-e2e.ts",
     "verify": "pnpm typecheck && pnpm test && pnpm verify:e2e && pnpm memwal:durability",
-    "mcp:verify": "tsx scripts/mcp-verify.ts"
+    "mcp:verify": "tsx scripts/mcp-verify.ts",
+    "tatum:verify": "tsx scripts/verify-tatum.ts"
   },
   "dependencies": {
     "@mysten-incubation/memwal": "^0.1.8",
