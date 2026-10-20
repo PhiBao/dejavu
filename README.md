@@ -125,11 +125,27 @@ Jev is TypeSafe's own model and Voxtral is Mistral — neither is Anthropic or
 OpenAI, so the *Beyond the Big Two* track holds. Every judgment degrades
 gracefully to generative fallbacks when unconfigured.
 
-### Prose renderer: Bedrock Mantle (Mistral Voxtral Mini 3B)
+### Prose renderer: provider-agnostic, and never silently swapped
 
-One bearer API key, no IAM, no vector code: extraction JSON + answer synthesis
-only. With no key (`AI_PROVIDER=mock`) or no Walrus/TypeSafe keys, deterministic
-local paths keep the full product demoable end-to-end.
+The LLM only writes words; Jev decides. The writer is a **chain**, because
+hosted API keys expire without warning and a demo that quietly answers from a
+regex is worse than one that fails loudly:
+
+```
+primary (any OpenAI-compatible API, e.g. OpenRouter + Mistral)
+  → Bedrock Mantle (Mistral Voxtral Mini 3B)
+  → secondary provider
+  → keyless open-weights gateway (GPT-OSS 20B)
+  → deterministic local rules (last resort, dev only)
+```
+
+Every answer and every capture shows **which model actually wrote it**, and
+`GET /api/health` actively calls the model and reports `status: degraded`
+when the writer is unavailable. A fallback is never hidden.
+
+**Why this matters for a memory product:** the memories are the durable part;
+the writer is interchangeable. Recall survives its writer changing — which is
+the same promise the Walrus layer makes about the app.
 
 ---
 
@@ -340,7 +356,8 @@ projection is future work (Walrus blobs are already Seal-encrypted).
 - **TypeSafe (Jev)** — every decision: intent, identity, relevance, citation
   verdicts. Proof: `pnpm judge:verify`.
 - **Amazon Bedrock — Mantle endpoint** (Chat Completions via Voxtral Mini 3B,
-  Mistral — *Beyond the Big Two* track): prose generation only.
+  Mistral — *Beyond the Big Two* track): prose generation only, behind a
+  provider chain that degrades loudly rather than silently.
 - **Fly.io**: hosts the live demo URL (single shared-1x 256MB machine,
   scale-to-zero, 1GB volume for the projection) — see `docs/deploy-fly.md`.
 - **AWS Lambda + EventBridge** *(optional)*: runs the daily nudge cron
