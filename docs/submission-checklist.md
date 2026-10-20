@@ -17,7 +17,7 @@ Full rules: `thewalrussessions.wal.app/chatbots`
       agent ID + blob count in the DeepSurge form. Source of truth:
       `GET /api/health` → `counts.walrus_blobs`; `pnpm memwal:verify`.
 - [ ] **Public GitHub repo + setup instructions** (this repo; README updated).
-- [ ] **LLM stated**: Mistral Voxtral Mini 3B via AWS Bedrock
+- [ ] **LLM stated**: Qwen3-30B-A3B (open weights) via Nebius Token Factory
       (→ also qualifies for **Beyond the Big Two**).
 - [ ] **Dedicated Sessions wallet** created for the Session.
       **[action]** Create it, fund with WAL+SUI, generate the MemWal account at
@@ -34,9 +34,9 @@ Full rules: `thewalrussessions.wal.app/chatbots`
 ## Prize tracks (stackable — chase all marked ★)
 
 - [ ] ★ **Best Chatbot** (500/250/150) — judged on all four criteria below.
-- [ ] ★ **Beyond the Big Two** (150×2) — primary LLM is Voxtral Mini
-      (Mistral via Bedrock), documented in README + submission form with
-      integration notes.
+- [ ] ★ **Beyond the Big Two** (150×2) — primary LLM is Qwen3-30B-A3B (open
+      weights) via Nebius Token Factory; secondary is Mistral Voxtral Mini 3B on
+      AWS Bedrock. Documented in README + submission form with integration notes.
 - [ ] ★ **Best Article** (100×3) — clarity, honesty, usefulness to a Walrus
       Memory newcomer.
 - [ ] ★ **Promo Prize** (100×5) — share the article in a third-party community

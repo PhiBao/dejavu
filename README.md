@@ -55,7 +55,7 @@ Walrus is not a feature here — it is the memory. The local process keeps only
 a thin structured projection (people, facts, due dates); every word the user
 said lives in Walrus:
 
-- **Capture** (`lib/memory.ts: captureMemory`): Bedrock extracts person +
+- **Capture** (`lib/memory.ts: captureMemory`): the writer extracts person +
   facts + commitments → Jev resolves *which* person (Choice over roster +
   spans, never invented) → the enriched text is persisted via Walrus Memory
   into the user's namespace (`recall-<userId>`) → the returned **blob id**
@@ -115,15 +115,16 @@ Then: capture someone in the browser, and in Claude Code ask *"Who did I met
 that's hiring React engineers?"* — same encrypted blob, different client.
 That is the portability claim, demonstrated rather than asserted.
 
-### Calibrated judgments: Jev decides, Voxtral writes
+### Calibrated judgments: Jev decides, the writer only writes words
 
 A generative LLM writes good words and makes unaccountable choices. Recall
 splits the two — every *decision* is a typed TypeSafe (Jev) judgment with
 probabilities + confidence, and the generative model only renders prose from
 decided context (`lib/judge.ts`, see **[docs/judgments.md](docs/judgments.md)**).
-Jev is TypeSafe's own model and Voxtral is Mistral — neither is Anthropic or
-OpenAI, so the *Beyond the Big Two* track holds. Every judgment degrades
-gracefully to generative fallbacks when unconfigured.
+Jev is TypeSafe's own model and the writer is Qwen (via Nebius Token
+Factory) — neither is Anthropic or OpenAI, so the *Beyond the Big Two* track
+holds. Every judgment degrades gracefully to generative fallbacks when
+unconfigured.
 
 ### Prose renderer: provider-agnostic, and never silently swapped
 
@@ -132,7 +133,8 @@ hosted API keys expire without warning and a demo that quietly answers from a
 regex is worse than one that fails loudly:
 
 ```
-primary (any OpenAI-compatible API, e.g. OpenRouter + Mistral)
+primary  Nebius Token Factory — Qwen3-30B-A3B (open weights)
+  → any OpenAI-compatible API (OpenRouter, Together, …)
   → Bedrock Mantle (Mistral Voxtral Mini 3B)
   → secondary provider
   → keyless open-weights gateway (GPT-OSS 20B)
@@ -166,7 +168,7 @@ flowchart TB
     Blob -.-> Fast
     Fast --> Rank{"Jev Noul rank<br/>≥ 0.35?"}
     Rank -->|none pass| Abstain["abstain<br/>no synthesis call"]
-    Rank --> Synth["Voxtral synthesis<br/>words only"]
+    Rank --> Synth["Writer synthesis<br/>words only"]
     Synth --> Verify{"Jev citation check<br/>supports?"}
     Verify -->|contradicted| Hide["hidden / withheld"]
     Verify --> Cited["cited answer ✓"]
@@ -189,7 +191,7 @@ lib/
   judge.ts               TypeSafe judgments: route, resolve, rank, verify
   store.ts               Local projection (people/facts/commitments/users)
   memory.ts              Domain logic: captureMemory() + recall()
-  ai.ts                  Bedrock Mantle prose (Voxtral Mini) + mock fallback
+  ai.ts                  Prose writer (Qwen via Token Factory) + provider chain
   auth.ts                Signed httpOnly session; strict per-user isolation
   env.ts                 Zod-validated, fail-fast config (no DB, no IAM)
 scripts/
@@ -355,9 +357,11 @@ projection is future work (Walrus blobs are already Seal-encrypted).
   `pnpm tatum:verify`.
 - **TypeSafe (Jev)** — every decision: intent, identity, relevance, citation
   verdicts. Proof: `pnpm judge:verify`.
-- **Amazon Bedrock — Mantle endpoint** (Chat Completions via Voxtral Mini 3B,
-  Mistral — *Beyond the Big Two* track): prose generation only, behind a
+- **Nebius Token Factory** (OpenAI-compatible, `Qwen/Qwen3-30B-A3B-Instruct-2507`,
+  open weights — *Beyond the Big Two* track): the prose writer, behind a
   provider chain that degrades loudly rather than silently.
+- **Amazon Bedrock — Mantle endpoint** (Mistral Voxtral Mini 3B): secondary
+  writer on the same chain.
 - **Fly.io**: hosts the live demo URL (single shared-1x 256MB machine,
   scale-to-zero, 1GB volume for the projection) — see `docs/deploy-fly.md`.
 - **AWS Lambda + EventBridge** *(optional)*: runs the daily nudge cron
@@ -367,7 +371,7 @@ projection is future work (Walrus blobs are already Seal-encrypted).
 Next.js 15 · React 19 · TypeScript (strict) · Tailwind · Walrus Memory
 (portable encrypted memory + semantic recall · per-user namespaces · MCP
 server) · TypeSafe Jev (calibrated judgments: route, resolve, rank, verify) ·
-AWS Bedrock (Mantle + Voxtral Mini 3B, prose only) · AWS Lambda · Fly.io
+Nebius Token Factory (Qwen3-30B-A3B, prose) · AWS Bedrock (secondary) · AWS Lambda · Fly.io
 Hosting · `jose` · Zod.
 
 ## License

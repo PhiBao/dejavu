@@ -82,7 +82,7 @@ I promise Marcus?"*
 ### 2:30–2:45 — Architecture + close
 Show the architecture diagram (in the README / a slide).
 
-> "Bedrock extracts and answers, Walrus remembers — encrypted blobs with
+> "The writer answers, Jev decides, Walrus remembers — encrypted blobs with
 > per-user namespaces. Semantic recall with citations. Your agents read it over
 > MCP. Deployed on Fly.io. That's Recall — a chatbot that actually
 > remembers."
