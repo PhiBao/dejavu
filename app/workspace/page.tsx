@@ -14,7 +14,9 @@ import { ApiKeysPanel } from "@/components/ApiKeysPanel";
 import { BlobChip } from "@/components/BlobChip";
 import { DemoLoader } from "@/components/DemoLoader";
 import { OnchainPanel } from "@/components/OnchainPanel";
+import { MemoryHealthPanel } from "@/components/MemoryHealthPanel";
 import { isTatumConfigured, verifyMemoriesOnchain } from "@/lib/tatum";
+import { computeMemoryHealth } from "@/lib/health";
 import { loadStore } from "@/lib/store";
 
 export default async function AppPage() {
@@ -37,6 +39,9 @@ export default async function AppPage() {
       .map((m) => m.walrus_blob_id as string);
     onchain = await verifyMemoriesOnchain(blobIds);
   }
+
+  // The learning loop's view: which memories actually earn their storage.
+  const health = await computeMemoryHealth(user.id);
 
   const firstName = user.name?.split(" ")[0] ?? "there";
 
@@ -112,6 +117,7 @@ export default async function AppPage() {
 
         {/* Right: Today feed + people */}
         <aside className="flex flex-col gap-8">
+          <MemoryHealthPanel health={health} />
           <OnchainPanel data={onchain} />
           <div>
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink/40">

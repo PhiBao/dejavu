@@ -17,6 +17,26 @@ const schema = z.object({
 
   AI_PROVIDER: z.enum(["bedrock", "mock"]).default("bedrock"),
 
+  // Prose provider. Bedrock's hosted API keys expire; the prose layer is
+  // therefore provider-agnostic with a fallback chain:
+  //   primary  = LLM_PROVIDER=openai-compatible (any OpenAI-compatible API)
+  //   fallback = Bedrock Mantle (BEDROCK_API_KEY)
+  //   last     = LLM_FALLBACK_* (a second OpenAI-compatible provider)
+  // With none configured, Recall falls back to deterministic local writing.
+  LLM_PROVIDER: z.enum(["openai-compatible", "bedrock"]).default("bedrock"),
+  LLM_PROVIDER_NAME: z.string().optional(),
+  LLM_BASE_URL: z.string().default("https://openrouter.ai/api/v1"),
+  LLM_API_KEY: z.string().optional(),
+  LLM_MODEL: z.string().default("mistralai/mistral-small"),
+  LLM_FALLBACK_NAME: z.string().optional(),
+  LLM_FALLBACK_BASE_URL: z.string().default("https://openrouter.ai/api/v1"),
+  LLM_FALLBACK_API_KEY: z.string().optional(),
+  LLM_FALLBACK_MODEL: z.string().default("mistralai/mistral-small"),
+  // Keyless open-weights gateway used only when every configured provider is
+  // dead, so a demo never falls back to regex-written prose. Set "off" to
+  // disable it entirely.
+  LLM_EMERGENCY_FALLBACK: z.enum(["on", "off"]).default("on"),
+
   // Walrus Memory (MemWal) — the durable memory layer. One operator account
   // pays for storage; per-user isolation is via namespace (see lib/memwal.ts).
   // Generate at https://memory.walrus.xyz . When unset, the app runs on the

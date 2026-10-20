@@ -21,6 +21,7 @@ interface Entry {
     facts: number;
     commitments: number;
     walrusState: "certified" | "pending" | "unavailable";
+    writtenBy?: string;
   };
 }
 
@@ -93,6 +94,7 @@ export function Composer({ hasPeople }: { hasPeople: boolean }) {
                 facts: res.factsAdded,
                 commitments: res.commitmentsAdded,
                 walrusState: res.walrusState,
+                writtenBy: res.writtenBy,
               },
             },
           ]);
@@ -222,6 +224,14 @@ function ThreadEntry({ entry }: { entry: Entry }) {
         <div className="rounded-2xl rounded-bl-sm bg-accent/10 px-4 py-2 text-sm text-ink">
           {entry.answer ? <RichText text={entry.text} /> : entry.text}
         </div>
+        {entry.answer?.writtenBy && (
+          <p
+            className="pl-1 text-[11px] text-ink/35"
+            title="Which model actually wrote this answer — shown so a fallback is never hidden."
+          >
+            written by {entry.answer.writtenBy}
+          </p>
+        )}
         {entry.provenance && (
           <p
             className="pl-1 text-[11px] text-ink/40"
@@ -256,6 +266,9 @@ function ThreadEntry({ entry }: { entry: Entry }) {
               >
                 ⬡ Walrus write queued — saved locally
               </span>
+            )}
+            {entry.provenance.writtenBy && (
+              <span className="text-ink/30"> · written by {entry.provenance.writtenBy}</span>
             )}
           </p>
         )}

@@ -8,6 +8,7 @@ import {
   walrusRestore,
 } from "@/lib/memwal";
 import { getUserId } from "@/lib/auth";
+import { checkLlm } from "@/lib/ai";
 import { isTatumConfigured, tatumCreditUsage, verifyMemoriesOnchain } from "@/lib/tatum";
 
 /**
@@ -23,10 +24,14 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const memwal = await walrusHealth();
   const configured = memwal.configured || isMemwalConfigured();
+  // Actually call the model: a demo that silently degrades to the mock
+  // writer is worse than a loud failure.
+  const llm = await checkLlm();
   const body: Record<string, unknown> = {
-    status: "ok",
+    status: llm.ok || isMockAI() ? "ok" : "degraded",
     timestamp: new Date().toISOString(),
-    ai: isMockAI() ? "mock-fallback" : "bedrock",
+    ai: isMockAI() ? "mock-fallback" : llm.ok ? llm.provider : `unavailable (${llm.provider})`,
+    llm,
     memory: "walrus",
     walrus: {
       configured,

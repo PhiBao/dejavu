@@ -1,53 +1,195 @@
 import { z } from "zod";
 import { env, isMockAI } from "./env";
 import { findPersonSpans } from "./judge";
+import { log } from "./log";
 import type { ExtractedMemory, MemoryKind } from "./types";
 
 /**
- * The prose layer. Two capabilities, both through the Bedrock Mantle endpoint
- * (OpenAI-compatible Chat Completions) with a single Bedrock API key:
+ * The prose layer. Two capabilities, both through an OpenAI-compatible
+ * Chat Completions endpoint:
  *   1. extractMemory    — raw user text → structured person + facts + commitments
  *   2. synthesizeRecall — grounded answer from retrieved memories ONLY
  *   (+ rerankRecall — generative fallback ranker when Jev is unavailable)
  *
  * Jev (lib/judge.ts) owns every decision; this module only writes words.
  * Embeddings live in Walrus Memory's relayer — there is no local vector
- * code here. With no Bedrock auth (or AI_PROVIDER=mock), deterministic local
+ * code here. With no LLM auth (or AI_PROVIDER=mock), deterministic local
  * implementations keep the product fully runnable for local dev.
+ *
+ * PROVIDERS: Bedrock's hosted API keys are short-lived and expire without
+ * warning — a demo that silently degrades to the mock writer is worse than a
+ * failed one. So the prose layer is provider-agnostic and falls back along a
+ * chain: primary provider → secondary provider → deterministic mock. Every
+ * provider is OpenAI-compatible, so switching is one env var.
  */
 
 const REQUEST_TIMEOUT_MS = 60_000;
 
-// --- Bedrock Mantle: OpenAI-compatible Chat Completions -------------------
+export interface LlmProvider {
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
 
-async function chatJSON(system: string, user: string): Promise<string> {
+/** Configured providers, in fallback order. */
+export function llmProviders(): LlmProvider[] {
   const e = env();
-  const res = await fetch(
-    `https://bedrock-mantle.${e.AWS_REGION}.api.aws/v1/chat/completions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${e.BEDROCK_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: e.BEDROCK_TEXT_MODEL_ID,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        max_tokens: 1024,
-        temperature: 0,
-      }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    },
-  );
+  const out: LlmProvider[] = [];
+
+  if (e.LLM_PROVIDER === "openai-compatible" && e.LLM_API_KEY) {
+    out.push({
+      name: e.LLM_PROVIDER_NAME || "openai-compatible",
+      baseUrl: e.LLM_BASE_URL,
+      apiKey: e.LLM_API_KEY,
+      model: e.LLM_MODEL,
+    });
+  }
+  if (e.BEDROCK_API_KEY) {
+    out.push({
+      name: "bedrock",
+      baseUrl: `https://bedrock-mantle.${e.AWS_REGION}.api.aws/v1`,
+      apiKey: e.BEDROCK_API_KEY,
+      model: e.BEDROCK_TEXT_MODEL_ID,
+    });
+  }
+  if (e.LLM_FALLBACK_API_KEY) {
+    out.push({
+      name: e.LLM_FALLBACK_NAME || "fallback",
+      baseUrl: e.LLM_FALLBACK_BASE_URL,
+      apiKey: e.LLM_FALLBACK_API_KEY,
+      model: e.LLM_FALLBACK_MODEL,
+    });
+  }
+  // Last resort: a keyless, open-weights gateway (GPT-OSS 20B on OVH). It
+  // exists so a demo never falls back to regex-written prose, and the UI
+  // always shows which model actually answered.
+  if (e.LLM_EMERGENCY_FALLBACK !== "off") {
+    out.push({
+      name: "gpt-oss-20b",
+      baseUrl: "https://text.pollinations.ai/openai",
+      apiKey: "",
+      model: "openai-fast",
+    });
+  }
+  return out;
+}
+
+export function primaryProviderName(): string {
+  return llmProviders()[0]?.name ?? "mock";
+}
+
+/**
+ * One chat completion. Tries each configured provider in order; returns the
+ * first success plus which provider actually answered (so the UI can show it
+ * — a demo that silently used a different model than claimed is a lie we
+ * refuse to tell).
+ */
+async function chatJSON(
+  system: string,
+  user: string,
+): Promise<{ text: string; provider: string; model: string }> {
+  const providers = llmProviders();
+  if (providers.length === 0) {
+    throw new Error("No LLM provider configured");
+  }
+  let lastError: unknown = null;
+  for (const p of providers) {
+    try {
+      const text = await chatWith(p, system, user);
+      return { text, provider: p.name, model: p.model };
+    } catch (err) {
+      lastError = err;
+      log.warn("llm_provider_failed", {
+        provider: p.name,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("All LLM providers failed");
+}
+
+async function chatWith(
+  p: LlmProvider,
+  system: string,
+  user: string,
+): Promise<string> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  // Keyless gateways (the emergency fallback) must not send an empty bearer.
+  if (p.apiKey) headers.Authorization = `Bearer ${p.apiKey}`;
+  const res = await fetch(`${p.baseUrl.replace(/\/$/, "")}/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model: p.model,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content: user },
+      ],
+      max_tokens: 1024,
+      temperature: 0,
+    }),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
-    throw new Error(`Bedrock ${res.status}: ${detail.slice(0, 200)}`);
+    throw new Error(`${p.name} ${res.status}: ${detail.slice(0, 200)}`);
   }
   const json = await res.json();
-  return (json?.choices?.[0]?.message?.content ?? "").trim();
+  const text = (json?.choices?.[0]?.message?.content ?? "").trim();
+  if (!text) throw new Error(`${p.name} returned an empty completion`);
+  return text;
+}
+
+/**
+ * Liveness probe: does the configured provider actually answer? Cached, so
+ * the health endpoint can report the truth without spending money per hit.
+ */
+let llmCheck: { at: number; ok: boolean; provider: string; error?: string } | null =
+  null;
+
+export async function checkLlm(): Promise<{
+  ok: boolean;
+  provider: string;
+  error?: string;
+  checkedAt: string;
+}> {
+  const providers = llmProviders();
+  if (providers.length === 0) {
+    return {
+      ok: false,
+      provider: "mock",
+      error: "no provider configured",
+      checkedAt: new Date().toISOString(),
+    };
+  }
+  if (llmCheck && Date.now() - llmCheck.at < 60_000) {
+    return {
+      ok: llmCheck.ok,
+      provider: llmCheck.provider,
+      error: llmCheck.error,
+      checkedAt: new Date(llmCheck.at).toISOString(),
+    };
+  }
+  let ok = false;
+  let error: string | undefined;
+  let provider = providers[0]!.name;
+  for (const p of providers) {
+    try {
+      await chatWith(
+        p,
+        "You are a health check. Reply with the single word: ok",
+        "ping",
+      );
+      ok = true;
+      provider = p.name;
+      break;
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+    }
+  }
+  llmCheck = { at: Date.now(), ok, provider, error };
+  return { ok, provider, error, checkedAt: new Date().toISOString() };
 }
 
 // --- Schemas for validating model output ----------------------------------
@@ -118,17 +260,19 @@ Rules:
 // --- Public API -----------------------------------------------------------
 
 export async function extractMemory(text: string): Promise<ExtractedMemory> {
-  if (isMockAI()) return mockExtract(text);
+  if (isMockAI()) return { ...mockExtract(text), writtenBy: "local rules" };
   try {
-    const raw = await chatJSON(EXTRACT_SYSTEM, text);
+    const { text: raw, provider, model } = await chatJSON(EXTRACT_SYSTEM, text);
     const parsed = extractionSchema.safeParse(safeParseJSON(raw));
-    if (parsed.success) return parsed.data;
+    if (parsed.success) {
+      return { ...parsed.data, writtenBy: `${provider} · ${model}` };
+    }
     // Model returned unexpected shape — fall back to a minimal capture so we
     // NEVER lose the user's raw memory.
-    return degradedExtract(text);
+    return { ...degradedExtract(text), writtenBy: `${provider} · ${model}` };
   } catch (err) {
     console.error("[ai] extractMemory failed, degrading:", errMsg(err));
-    return degradedExtract(text);
+    return { ...degradedExtract(text), writtenBy: "local rules" };
   }
 }
 
@@ -166,7 +310,7 @@ export async function rerankRecall(
     const context = memories
       .map((m, i) => `[${i}] ${m.content}`)
       .join("\n");
-    const raw = await chatJSON(
+    const { text: raw } = await chatJSON(
       RERANK_SYSTEM,
       `Question: ${question}\n\nMemories:\n${context}`,
     );
@@ -183,14 +327,22 @@ export async function rerankRecall(
   }
 }
 
+/** A grounded answer plus which model actually wrote it. */
+export interface SynthesizedAnswer {
+  text: string;
+  writtenBy: string;
+}
+
 export async function synthesizeRecall(
   question: string,
   memories: { id: string; personName: string | null; content: string; occurredAt: string }[],
-): Promise<string> {
+): Promise<SynthesizedAnswer> {
   if (memories.length === 0) {
-    return ABSTAIN_TEXT;
+    return { text: ABSTAIN_TEXT, writtenBy: "no context" };
   }
-  if (isMockAI()) return mockRecall(question, memories);
+  if (isMockAI()) {
+    return { text: mockRecall(question, memories), writtenBy: "local rules" };
+  }
   try {
     const context = memories
       .map(
@@ -199,11 +351,15 @@ export async function synthesizeRecall(
       )
       .join("\n");
     const user = `Memories:\n${context}\n\nQuestion: ${question}`;
-    const answer = await chatJSON(RECALL_SYSTEM, user);
-    return answer.trim() || mockRecall(question, memories);
+    const { text, provider, model } = await chatJSON(RECALL_SYSTEM, user);
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return { text: mockRecall(question, memories), writtenBy: `${provider} · ${model}` };
+    }
+    return { text: trimmed, writtenBy: `${provider} · ${model}` };
   } catch (err) {
     console.error("[ai] synthesizeRecall failed, degrading:", errMsg(err));
-    return mockRecall(question, memories);
+    return { text: mockRecall(question, memories), writtenBy: "local rules" };
   }
 }
 

@@ -65,12 +65,16 @@ export interface ExtractedMemory {
   kind: MemoryKind;
   facts: { attribute: string; value: string }[];
   commitments: { description: string; dueInDays: number | null }[];
+  /** Which model actually wrote this ("bedrock · mistral.voxtral-mini-3b-2507"). */
+  writtenBy?: string;
 }
 
 /** A recall answer with citations to the memories that support it. */
 export interface RecallAnswer {
   answer: string;
   citations: RecallCitation[];
+  /** Which model actually wrote the answer. */
+  writtenBy?: string;
 }
 
 export interface RecallCitation {

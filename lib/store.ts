@@ -35,6 +35,17 @@ export interface AuditEntry {
   created_at: string;
 }
 
+/**
+ * How often a memory was actually recalled, and when it was last used.
+ * This is the signal the learning loop runs on: memories you keep asking
+ * for are the ones worth protecting (and renewing) when storage runs out.
+ */
+export interface MemoryUsage {
+  memory_id: string;
+  hits: number;
+  last_hit_at: string;
+}
+
 interface StoreData {
   users: AppUser[];
   people: Person[];
@@ -43,6 +54,7 @@ interface StoreData {
   commitments: Commitment[];
   apiKeys: ApiKey[];
   audit: AuditEntry[];
+  usage: MemoryUsage[];
 }
 
 function emptyStore(): StoreData {
@@ -54,6 +66,7 @@ function emptyStore(): StoreData {
     commitments: [],
     apiKeys: [],
     audit: [],
+    usage: [],
   };
 }
 
@@ -262,6 +275,38 @@ export function countWalrusBlobs(userId?: string): number {
   const memories = loadStore().memories.filter((m) => m.walrus_blob_id);
   if (userId) return memories.filter((m) => m.user_id === userId).length;
   return memories.length;
+}
+
+// --- Usage (the learning loop's signal) -------------------------------------
+
+/** Record that a memory was recalled (used by the answer the user saw). */
+export function recordMemoryHit(memoryId: string): void {
+  const store = loadStore();
+  const row = store.usage.find((u) => u.memory_id === memoryId);
+  if (row) {
+    row.hits += 1;
+    row.last_hit_at = new Date().toISOString();
+  } else {
+    store.usage.push({
+      memory_id: memoryId,
+      hits: 1,
+      last_hit_at: new Date().toISOString(),
+    });
+  }
+  saveStore(store);
+}
+
+/** Recall counts per memory id (missing = never recalled). */
+export function memoryUsageMap(userId: string): Map<string, MemoryUsage> {
+  const store = loadStore();
+  const ids = new Set(
+    store.memories.filter((m) => m.user_id === userId).map((m) => m.id),
+  );
+  const out = new Map<string, MemoryUsage>();
+  for (const u of store.usage) {
+    if (ids.has(u.memory_id)) out.set(u.memory_id, u);
+  }
+  return out;
 }
 
 // --- Facts ---------------------------------------------------------------

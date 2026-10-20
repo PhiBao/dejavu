@@ -61,6 +61,7 @@ export async function captureAction(rawText: string): Promise<
       factsAdded: number;
       commitmentsAdded: number;
       walrusState: "certified" | "pending" | "unavailable";
+      writtenBy: string;
     }
   | { ok: false; error: string }
 > {
@@ -87,6 +88,7 @@ export async function captureAction(rawText: string): Promise<
       factsAdded: result.factsAdded,
       commitmentsAdded: result.commitmentsAdded,
       walrusState: result.walrusState,
+      writtenBy: result.writtenBy,
     };
   } catch (err) {
     log.error("capture_failed", { userId, error: err instanceof Error ? err.message : String(err) });

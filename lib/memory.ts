@@ -14,6 +14,8 @@ import {
   upsertPerson,
 } from "./store";
 import { userNamespace, walrusAwaitBlob, walrusRecall, walrusRememberAsync } from "./memwal";
+import { relianceBoost } from "./health";
+import { memoryUsageMap, recordMemoryHit } from "./store";
 import {
   CITATION_AUTO_ACCEPT,
   RELEVANCE_MIN_SCORE,
@@ -66,6 +68,8 @@ export interface CaptureResult {
   personConfidence: number | null;
   /** True when Jev asserted the memory is about nobody in particular. */
   personDeclined: boolean;
+  /** Which model wrote the extraction ("bedrock · mistral.voxtral-mini-3b-2507"). */
+  writtenBy: string;
   /**
    * Where the enriched record stands on Walrus.
    *  - "certified"   blob uploaded and certified on-chain
@@ -322,6 +326,7 @@ export async function captureMemory(
     personSource,
     personConfidence: picked?.confidence ?? null,
     personDeclined: person === null,
+    writtenBy: extracted.writtenBy ?? "local rules",
     walrusState: memory.walrus_blob_id
       ? "certified"
       : jobId
@@ -438,8 +443,18 @@ export async function recall(
     if (scored) {
       judged = true;
       const byScore = new Map(scored.map((s) => [s.id, s.score]));
+      // The learning loop: memories you have actually relied on get a small
+      // tie-break boost. Relevance still decides what is shown — reliance can
+      // only reorder equally relevant memories, never surface an irrelevant one.
+      const usage = memoryUsageMap(userId);
       const ordered = pool
-        .map((p) => ({ ...p, judgeScore: byScore.get(p.id) ?? 0 }))
+        .map((p) => ({
+          ...p,
+          judgeScore: Math.min(
+            1,
+            (byScore.get(p.id) ?? 0) + relianceBoost(usage.get(p.id)?.hits ?? 0),
+          ),
+        }))
         .sort((a, b) => b.judgeScore - a.judgeScore);
       ranked = (isAggregate ? ordered : ordered.filter((p) => p.judgeScore >= RELEVANCE_MIN_SCORE)).slice(
         0,
@@ -481,7 +496,7 @@ export async function recall(
   }
 
   // 3. Synthesize from ranked context (generation only — decisions are made).
-  const answer = await synthesizeRecall(
+  const { text: answer, writtenBy } = await synthesizeRecall(
     q,
     ranked.map((r) => ({
       id: r.id,
@@ -507,6 +522,8 @@ export async function recall(
   }
 
   // 4. Verify every citation against its source memory (batched, one call).
+  //    Verified citations are the ones the user actually saw — record the hit
+  //    so the learning loop learns which memories earn their storage.
   let citations: RecallCitation[] = ranked.map((r, i) => ({
     memoryId: r.id,
     personId: r.personId,
@@ -551,7 +568,15 @@ export async function recall(
     }
   }
 
-  return { answer: finalAnswer, citations };
+  // Learning loop: the memories the user actually saw are the ones that
+  // earned a hit. This is the signal the Memory Health panel acts on.
+  for (const c of citations) {
+    if (c.verified === "verified" || c.verified === null) {
+      recordMemoryHit(c.memoryId);
+    }
+  }
+
+  return { answer: finalAnswer, citations, writtenBy };
 }
 
 /**
