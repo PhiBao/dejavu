@@ -224,6 +224,36 @@ export interface BlobOnchain {
   deletable: boolean;
 }
 
+// --- Credit budget ---------------------------------------------------------
+// The free plan carries 100K credits (lifetime, not monthly) and auto-upgrades
+// when exhausted, so an unbounded poller could spend the user's money. This
+// keeps Recall inside the free tier by construction: a hard hourly request
+// budget, after which we serve the last known good values instead of asking.
+
+const CREDIT_BUDGET_PER_HOUR = 120;
+let creditsThisHour = 0;
+let budgetWindowStart = Date.now();
+
+function takeCredit(): boolean {
+  const now = Date.now();
+  if (now - budgetWindowStart > 3600_000) {
+    budgetWindowStart = now;
+    creditsThisHour = 0;
+  }
+  if (creditsThisHour >= CREDIT_BUDGET_PER_HOUR) return false;
+  creditsThisHour++;
+  return true;
+}
+
+/** Credits spent in the current hour (for the health endpoint). */
+export function tatumCreditUsage(): { used: number; budget: number; window: number } {
+  return {
+    used: creditsThisHour,
+    budget: CREDIT_BUDGET_PER_HOUR,
+    window: Math.max(0, 3600_000 - (Date.now() - budgetWindowStart)),
+  };
+}
+
 // --- TTL cache --------------------------------------------------------------
 // Epochs change every two weeks and delegation rarely changes, so re-reading
 // them per request would burn the free plan's credits (and 3 RPS) for nothing.
@@ -237,6 +267,10 @@ const cache = new Map<string, CacheEntry<unknown>>();
 async function cached<T>(key: string, ttlMs: number, load: () => Promise<T | null>): Promise<T | null> {
   const hit = cache.get(key) as CacheEntry<T> | undefined;
   if (hit && hit.expiresAt > Date.now()) return hit.value;
+  if (!takeCredit()) {
+    // Budget spent: serve the stale value rather than spending more.
+    return hit?.value ?? null;
+  }
   const value = await load();
   if (value !== null) cache.set(key, { value, expiresAt: Date.now() + ttlMs });
   return value;
@@ -272,7 +306,7 @@ async function getMoveFields<T>(objectId: string): Promise<T | null> {
 export async function getWalrusSystemState(): Promise<WalrusSystemState | null> {
   const cfg = tatumConfig();
   if (!cfg) return null;
-  return cached("walrus:system", 5 * 60_000, () => loadWalrusSystemState(cfg));
+  return cached("walrus:system", 15 * 60_000, () => loadWalrusSystemState(cfg));
 }
 
 async function loadWalrusSystemState(cfg: TatumConfig): Promise<WalrusSystemState | null> {
@@ -313,7 +347,7 @@ async function loadWalrusSystemState(cfg: TatumConfig): Promise<WalrusSystemStat
 export async function getMemWalAccount(): Promise<MemWalAccountOnchain | null> {
   const cfg = tatumConfig();
   if (!cfg?.accountId) return null;
-  return cached("memwal:account", 5 * 60_000, () => loadMemWalAccount(cfg));
+  return cached("memwal:account", 15 * 60_000, () => loadMemWalAccount(cfg));
 }
 
 async function loadMemWalAccount(cfg: TatumConfig): Promise<MemWalAccountOnchain | null> {
@@ -408,7 +442,7 @@ interface OwnedObject {
  */
 export async function listOwnedBlobs(owner: string): Promise<Map<string, BlobOnchain>> {
   if (!owner) return new Map();
-  const hit = await cached(`blobs:${owner}`, 60_000, async () => loadOwnedBlobs(owner));
+  const hit = await cached(`blobs:${owner}`, 15 * 60_000, async () => loadOwnedBlobs(owner));
   return hit ?? new Map();
 }
 

@@ -8,7 +8,7 @@ import {
   walrusRestore,
 } from "@/lib/memwal";
 import { getUserId } from "@/lib/auth";
-import { isTatumConfigured, verifyMemoriesOnchain } from "@/lib/tatum";
+import { isTatumConfigured, tatumCreditUsage, verifyMemoriesOnchain } from "@/lib/tatum";
 
 /**
  * Health check (and human eyes). Reports the AI path, the local projection
@@ -58,6 +58,7 @@ export async function GET() {
             blobs: onchain.blobs,
             explorer: onchain.explorer,
             checkedAt: onchain.checkedAt,
+            credits: tatumCreditUsage(),
           }
         : { verified: false, provider: "tatum", error: "rpc_unavailable" };
     } catch {
