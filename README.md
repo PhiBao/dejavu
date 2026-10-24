@@ -528,17 +528,12 @@ onchain panel says *unavailable* rather than pretending.
 - **Demo-focused auth.** One operator MemWalAccount; multi-tenant accounts per
   user would be the production shape.
 
-### Naming note (why two identifiers still say `recall`)
+### Naming note (why one identifier still says `recall`)
 
-The product is **Dejavu**. Two identifiers keep the original name on purpose:
-
-- **Walrus namespace prefix `recall-<userId>`** — renaming it would orphan every
-  blob already written to mainnet, because recall is scoped by exact namespace.
-- **Fly hostname `dejavu-memory.fly.dev`** — changing it would break the
-  submitted demo URL.
-
-Both are implementation details; the product, UI, MCP server, API keys and docs
-are Dejavu.
+The product is **Dejavu**. The Walrus namespace prefix remains
+`recall-<userId>` on purpose: recall is scoped by exact namespace, so renaming
+it would orphan every blob already written to mainnet. It is an implementation
+detail — the product, UI, MCP server, API keys, domain and docs are Dejavu.
 
 ### Known tradeoffs
 
