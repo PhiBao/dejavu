@@ -9,7 +9,7 @@ memories it saved — with citations, verified against their sources.
 Built for **Walrus × Tatum: Total Recall** (Track: *Smart Agents for Real Life*).
 
 > **Live app:** https://dejavu-memory.fly.dev
-> **Proof:** `GET /api/health` · **Code:** this repo, MIT
+> **Proof:** `GET /api/health` · **Code:** [github.com/PhiBao/dejavu](https://github.com/PhiBao/dejavu), MIT
 
 ---
 
@@ -189,92 +189,44 @@ is queued.
 
 ### System overview
 
-```mermaid
-flowchart TB
-    subgraph client["Client"]
-        UI["Next.js UI<br/>capture · recall · Today"]
-        AGENT["External agent<br/>Claude Code / Cursor"]
-    end
+![Dejavu system architecture: the app captures and recalls through Walrus Memory, decides with Jev, and verifies onchain through Tatum Sui gRPC](docs/diagrams/architecture.svg)
 
-    subgraph app["Dejavu app (Fly.io)"]
-        PIPE["Capture & recall pipeline<br/>grounding · ranking · verification"]
-        PROJ[("Projection<br/>people · facts · commitments<br/>usage")]
-        JUDGE["Judgment layer<br/>TypeSafe Jev"]
-    end
-
-    subgraph sponsors["Sponsor infrastructure"]
-        WALRUS[("Walrus Memory<br/>encrypted blobs · mainnet")]
-        TATUM["Tatum Sui gRPC<br/>system · account · blobs"]
-    end
-
-    WRITER["Prose writer<br/>Qwen via Token Factory"]
-
-    UI --> PIPE
-    AGENT -->|MCP| PIPE
-    PIPE --> JUDGE
-    PIPE --> WRITER
-    PIPE --> WALRUS
-    PIPE --> PROJ
-    TATUM -.->|verify| WALRUS
-    PIPE --> TATUM
-
-    classDef focal fill:#fff,stroke:#e4572e,stroke-width:2px,color:#0f1115
-    classDef store fill:#f7f7f5,stroke:#0f1115,stroke-width:1px,color:#0f1115
-    class WALRUS,TATUM focal
-    class PROJ store
-```
+The app owns **decisions** and **structure**; Walrus owns the **memory**; Tatum
+provides an **independent** read of what actually exists onchain. No component
+is decorative — remove Tatum and the "verified" claim disappears; remove Walrus
+and there is no durable memory left.
 
 ### Capture and recall flow
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant U as User
-    participant A as Dejavu
-    participant J as Jev (decisions)
-    participant W as Walrus Memory
-    participant T as Tatum gRPC
-    participant L as Writer (Qwen)
+**Capture** — one sentence in:
 
-    U->>A: "Met Sarah Chen, hiring React engineers"
-    par generation and decision in parallel
-        A->>L: extract structure
-        A->>J: which person is this?
-    end
-    A->>A: ground facts + headline in the note
-    A->>W: remember(enriched record, namespace)
-    W-->>A: job accepted → blob id
-    A->>T: verify Blob object, storage window
-    A-->>U: saved · certified · verified onchain
+1. The writer extracts structure while Jev resolves identity, in parallel.
+2. Headline, company and every fact value are **grounded** against the note;
+   anything not evidenced is dropped.
+3. The enriched record is written to Walrus Memory as one encrypted blob in the
+   user's namespace; the returned blob id lands on the projection row.
+4. Tatum reads the resulting `Blob` object back and records its storage window.
 
-    U->>A: "who's hiring frontend people?"
-    A->>W: recall(query, namespace)
-    W-->>A: semantic shortlist
-    A->>J: rank relevance (calibrated)
-    alt nothing relevant
-        A-->>U: "I don't have a memory of that yet."
-    else relevant
-        A->>L: synthesize from memories only
-        A->>J: verify each citation
-        A-->>U: answer + cited, verified sources
-    end
-```
+**Recall** — a question in your own words:
+
+1. `memwal.recall()` returns a semantic shortlist from the namespace.
+2. Jev scores each candidate (calibrated 0–1); the learning loop adds a small
+   reliance tie-break for memories you have actually used.
+3. If nothing clears the threshold, Dejavu **abstains before synthesis** — no
+   generated answer, no citations, no cost.
+4. Otherwise the writer synthesizes only from the shortlist, and Jev verifies
+   every citation against its source. Contradicted sources are hidden; if all
+   fail, the answer is withheld.
 
 ### Learning loop
 
-```mermaid
-flowchart LR
-    C["Capture"] --> M[("Memory<br/>on Walrus")]
-    M --> R["Dejavu"]
-    R --> H["Record hit<br/>which memory earned it"]
-    H --> I["Importance score<br/>reliance · recency · person · obligation"]
-    I --> B["Ranking tie-break"]
-    I --> X["Renewal priority<br/>vs onchain expiry"]
-    B --> R
+![The Dejavu learning loop: capture, recall, record hits, score importance, renew before expiry, all written back to memory on Walrus](docs/diagrams/loop.svg)
 
-    classDef focal fill:#fff,stroke:#e4572e,stroke-width:2px,color:#0f1115
-    class I focal
-```
+Every recall records which memory earned it. Importance is explainable —
+reliance (0.45), recency (0.20), relationship (0.20), obligation (0.15) — and
+feeds two visible behaviours: a capped ranking tie-break, and a renewal
+priority against the onchain expiry. The loop is how memory *changes the
+product* rather than merely persisting.
 
 ### Major components
 
