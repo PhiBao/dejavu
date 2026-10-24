@@ -1,4 +1,4 @@
-# Recall on Fly.io — minimum resources.
+# Dejavu on Fly.io — minimum resources.
 # One shared-cpu-1x 256MB machine in Singapore, scales to zero when idle
 # (auto_start wakes it on the next request), 1GB volume for data/recall.json
 # so the projection survives restarts and redeploys.

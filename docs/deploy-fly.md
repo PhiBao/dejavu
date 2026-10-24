@@ -1,4 +1,4 @@
-# Deploying Recall on Fly.io (minimum resources)
+# Deploying Dejavu on Fly.io (minimum resources)
 
 One shared-cpu-1x 256MB machine in Singapore, scales to zero when idle,
 1GB encrypted volume for `data/recall.json` so the projection survives
@@ -43,7 +43,7 @@ health check on `/api/health`.
 
 1. `GET https://recall-walrus-memory.fly.dev/api/health` → expect
    `status: ok`, `walrus.reachable: true`.
-2. Seed production: sign in on the live URL as `demo@recall.app` and
+2. Seed production: sign in on the live URL as `demo@dejavu.app` and
    capture the demo stories (same texts as `pnpm seed`) — production
    namespaces are per-user, so local blobs don't transfer. Confirm
    `counts.walrus_blobs ≥ 10` via `/api/health`.

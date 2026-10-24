@@ -6,11 +6,11 @@ import { importanceScore, relianceBoost } from "@/lib/health";
 import { captureMemory, recall } from "@/lib/memory";
 import { createUser, loadStore, memoryUsageMap } from "@/lib/store";
 
-process.env.RECALL_DATA_PATH = join(tmpdir(), `recall-health-${process.pid}.json`);
+process.env.DEJAVU_DATA_PATH = join(tmpdir(), `recall-health-${process.pid}.json`);
 
 beforeEach(() => {
   try {
-    rmSync(process.env.RECALL_DATA_PATH as string, { force: true });
+    rmSync(process.env.DEJAVU_DATA_PATH as string, { force: true });
   } catch {
     /* ignore */
   }

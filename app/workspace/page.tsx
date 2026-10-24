@@ -17,7 +17,7 @@ import { OnchainPanel } from "@/components/OnchainPanel";
 import { MemoryHealthPanel } from "@/components/MemoryHealthPanel";
 import { isTatumConfigured, verifyMemoriesOnchain } from "@/lib/tatum";
 import { computeMemoryHealth } from "@/lib/health";
-import { loadStore } from "@/lib/store";
+import { getMemoryFacts, loadStore } from "@/lib/store";
 
 export default async function AppPage() {
   const user = await getCurrentUser();
@@ -29,6 +29,11 @@ export default async function AppPage() {
     recentMemories(user.id, 8),
     listApiKeys(user.id),
   ]);
+  // Facts for notes are shown inline; people get their own profile page.
+  const factsByMemory = getMemoryFacts(
+    user.id,
+    recent.map((m) => m.id),
+  );
 
   // Independent onchain proof of this user's memories (Tatum Sui RPC).
   // Cached inside lib/tatum, so this is cheap on repeat renders.
@@ -53,7 +58,7 @@ export default async function AppPage() {
           <header className="mb-6 flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-lg">🪳</span>
-              <span className="font-semibold tracking-tight">Recall</span>
+              <span className="font-semibold tracking-tight">Dejavu</span>
             </div>
             <form action={signOutAction}>
               <button className="text-sm text-ink/50 hover:text-ink">
@@ -67,7 +72,7 @@ export default async function AppPage() {
               Hi {firstName}.
             </h1>
             <p className="mt-1 text-ink/60">
-              Tell me who you met, or ask me about anyone you know.
+              Tell me anything worth remembering — a person, a note, a promise.
             </p>
           </div>
 
@@ -90,6 +95,11 @@ export default async function AppPage() {
                     key={m.id}
                     className="rounded-xl border border-ink/5 bg-white p-3 text-sm"
                   >
+                    {!m.person_id && (
+                      <span className="mb-1 inline-block rounded bg-ink/5 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-ink/40">
+                        note
+                      </span>
+                    )}
                     {m.person_name && (
                       <Link
                         href={`/workspace/person/${m.person_id}`}
@@ -103,6 +113,18 @@ export default async function AppPage() {
                       {m.content.slice(0, 140)}
                       {m.content.length > 140 ? "…" : ""}
                     </span>
+                    {!m.person_id && (factsByMemory.get(m.id) ?? []).length > 0 && (
+                      <span className="mt-1 flex flex-wrap gap-1">
+                        {(factsByMemory.get(m.id) ?? []).slice(0, 4).map((f) => (
+                          <span
+                            key={f.id}
+                            className="rounded border border-ink/10 bg-paper px-1.5 py-0.5 text-[10px] text-ink/50"
+                          >
+                            {f.attribute.replace(/_/g, " ")}: {f.value}
+                          </span>
+                        ))}
+                      </span>
+                    )}
                     {m.walrus_blob_id && (
                       <span className="mt-1 block">
                         <BlobChip blobId={m.walrus_blob_id} />

@@ -2,7 +2,7 @@
  * Seed the demo user with the eight demo stories, through the real pipeline.
  *
  * Usage: pnpm seed
- * Sign in as demo@recall.app (or your own email via SEED_EMAIL) to see it.
+ * Sign in as demo@dejavu.app (or your own email via SEED_EMAIL) to see it.
  *
  * Every story becomes a genuine encrypted blob in Walrus Memory — this is the
  * same capture path the app uses, so the ≥10-blob Session proof is real
@@ -14,7 +14,7 @@ loadEnv();
 import { createUser, findUserByEmail, loadStore } from "../lib/store";
 import { seedDemoMemories } from "../lib/demo-stories";
 
-const EMAIL = process.env.SEED_EMAIL ?? "demo@recall.app";
+const EMAIL = process.env.SEED_EMAIL ?? "demo@dejavu.app";
 const NAME = process.env.SEED_NAME ?? "Alex Rivera";
 const USER_ID = process.env.SEED_USER_ID;
 

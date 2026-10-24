@@ -15,7 +15,7 @@ import type { Memory } from "./types";
 /**
  * Memory Health — the learning loop.
  *
- * Every recall is recorded, so Recall knows which memories actually earn
+ * Every recall is recorded, so Dejavu knows which memories actually earn
  * their storage. That signal changes the product in two visible ways:
  *
  *   1. RANKING — a memory you keep asking for is slightly boosted, so the

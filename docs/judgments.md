@@ -1,6 +1,6 @@
-# Calibrated judgments — how Recall decides (TypeSafe Jev)
+# Calibrated judgments — how Dejavu decides (TypeSafe Jev)
 
-Generative LLMs write good words and make unaccountable choices. Recall
+Generative LLMs write good words and make unaccountable choices. Dejavu
 splits the two: **Jev decides, the writer only writes words.** Every decision in the
 pipeline is a typed TypeSafe question with probabilities + confidence; code
 owns the thresholds and the fallbacks. The prose writer (Qwen via Token

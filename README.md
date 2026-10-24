@@ -1,378 +1,570 @@
-# 🪳 Recall — Remember Every Person
+# Dejavu — a memory companion that actually remembers
 
-**Recall is a relationship-memory chatbot built on Walrus.** You tell it, in
-plain words, about the people you meet ("Met Sarah at the AI meetup, she's
-hiring React devs, I promised to intro her to Priya") — and every memory
-becomes an **encrypted blob on Walrus**, recalled semantically across
-sessions through **Walrus Memory**. Ask questions in natural language, get
-answers grounded in the *exact* memories they came from, and get a daily
-**"Today" feed** so relationships never quietly go cold.
+**Dejavu is a memory companion for everything you'd otherwise forget** — a person
+you met, a promise you made, an idea, a deadline, a receipt, a plan. Write one
+sentence in plain words; Dejavu extracts the structure, stores it as an
+**encrypted blob on Walrus**, and later answers questions from the exact
+memories it saved — with citations, verified against their sources.
 
-Built for **Walrus Session 8: Chatbots That Remember**. Recall's thesis: an AI
-that helps you remember people is only useful if its memory is **durable,
-portable, and trustworthy** — memory that survives sessions, moves across
-apps, and never gets invented. Walrus is that layer; everything else in this
-repo exists to serve it.
+Built for **Walrus × Tatum: Total Recall** (Track: *Smart Agents for Real Life*).
 
-> ### 🚀 Live demo
-> **https://recall-walrus-memory.fly.dev** — deployed on Fly.io
-> (single 256MB machine + persistent volume), backed by Walrus Memory on
-> mainnet. Sign in with any email (or `demo@recall.app` for seeded data).
-> Health + blob proof: `GET /api/health` → `counts.walrus_blobs`.
+> **Live app:** https://recall-walrus-memory.fly.dev
+> **Proof:** `GET /api/health` · **Code:** this repo, MIT
 
 ---
 
-## The problem
+## Product
 
-People with large networks — founders, salespeople, recruiters, investors,
-community builders — forget names, context, and promises every day. The pain
-is frequent and emotionally charged (embarrassment, lost deals, relationships
-quietly going cold), and existing tools fail on both sides: CRMs demand
-form-filling nobody sustains; note apps store text but never *answer*
-anything. Nobody has closed the loop — conversational capture, cited recall,
-proactive follow-up — in one product.
+### What it is
 
-## What it does
+A single capture box and a single question box. Capture accepts anything
+worth remembering — people, notes, promises, ideas, deadlines — and turns it
+into structured memory stored on Walrus. Dejavu answers in natural language
+from those memories, cites them, and keeps a **Today** feed of follow-ups so
+promises don't quietly rot.
 
-- **Remember:** one sentence in — *"Met Sarah at the AI meetup, she's hiring
-  React devs, I promised to intro her to Priya."* Recall extracts the person,
-  the durable facts, and the follow-ups, and persists the enriched record as
-  an encrypted Walrus blob. People are the wedge, not the ceiling: a note
-  with no name is still stored, recalled, and cited.
-- **Recall:** ask in plain language, get a natural-language answer grounded in
-  the *exact* memories it came from — each with a relevance score and a
-  machine-checked ✓ verdict. Unknown questions get an honest "I don't have a
-  memory of that yet" instead of a hallucination.
-- **Follow through:** every promise becomes a Today-feed item with a
-  pre-drafted reconnect message, and stale relationships resurface through a
-  daily nudge. Memory that changes what you *do*, not just what you read.
+### Who it is for
+
+People whose life doesn't fit in a form: founders, salespeople, recruiters,
+consultants, community builders — and anyone who keeps a running note file
+because their brain is full. The first-class case is **people** (where
+forgetting costs the most); the product is deliberately not limited to them.
+
+### The problem
+
+- **Notes don't answer questions.** A note app stores text; it cannot tell you
+  *"who was hiring React engineers?"* or *"when does my passport expire?"*
+- **CRMs demand data entry nobody sustains.** Structure is valuable; forms are not.
+- **Chatbots forget.** Context dies with the session, the tab, or the vendor.
+- **Cloud memory is rented memory.** Your context is trapped in one product's
+  database, in one product's format, with no proof it still exists.
+
+### Value proposition
+
+1. **One sentence in, cited answers out.** No schemas, no pipeline stages, no admin panel.
+2. **The memory is yours, portable and verifiable.** It lives on Walrus as
+   encrypted blobs, readable by any client with the right key — including an
+   agent using Walrus Memory's own MCP tools. Delete the app's index and it
+   still answers.
+3. **It doesn't make things up.** Answers are grounded in retrieved memories,
+   every shown citation is machine-checked, and unknown questions abstain
+   before spending a generation call.
+4. **It tells you what it's about to forget.** Storage lifetime is read from
+   Sui (via Tatum), not assumed, and surfaced before expiry.
+
+### Why now
+
+Three things became cheap at the same time: capable open-weight models
+(Qwen via Token Factory), semantic memory as infrastructure (Walrus Memory),
+and independent onchain reads (Tatum RPC). A solo builder can now ship a
+memory product whose durability is **verifiable by a third party** instead of
+promised in a privacy policy.
+
+### Key product insight
+
+**The writer is replaceable; the memory is not.** Models will change, keys will
+expire, providers will disappear. So Dejavu puts the durable thing (memory) on
+Walrus, the decision layer in calibrated judgments, and treats the LLM as a
+swappable prose renderer — with the active writer shown on every answer.
 
 ---
 
-## How Walrus powers Recall (the core of the entry)
+## User Experience
 
-Walrus is not a feature here — it is the memory. The local process keeps only
-a thin structured projection (people, facts, due dates); every word the user
-said lives in Walrus:
-
-- **Capture** (`lib/memory.ts: captureMemory`): the writer extracts person +
-  facts + commitments → Jev resolves *which* person (Choice over roster +
-  spans, never invented) → the enriched text is persisted via Walrus Memory
-  into the user's namespace (`recall-<userId>`) → the returned **blob id**
-  lands on the local memory row. One capture = one certified mainnet blob.
-- **Recall** (`lib/memory.ts: recall`): `memwal.recall()` searches the user's
-  namespace by meaning — *"who's hiring frontend people?"* finds *"hiring
-  senior React engineers"* — then Jev ranks the shortlist with calibrated
-  0–1 scores, sub-threshold pools **abstain without a synthesis call**, and
-  every shown citation carries a machine-checked verdict (✓ verified,
-  contradicted hidden).
-- **Recovery** (`pnpm memwal:durability`): the relayer's index is rebuildable
-  from Walrus alone via `restore()`, and semantic recall still answers **with
-  the local projection deleted** — because the memories were never in the app.
-- **Verified, not asserted** (`lib/tatum.ts`): Tatum's Sui RPC independently
-  confirms each memory's Walrus `Blob` object, the MemWal account's delegate
-  keys, and the **real** storage window. Measured today: blobs registered at
-  epoch 40 with storage through epoch 55 (196 days, to **2027-05-04**) — the
-  relayer buys 15 epochs, not the SDK's default 50. `/api/health` and the
-  Memory Health card show the chain's answer, so a wrong assumption can't
-  quietly become a lost memory.
-- **Multi-tenant isolation** (`lib/memwal.ts`): one operator MemWalAccount
-  pays for storage (no per-user funding); each app user gets a deterministic
-  namespace. Recall is scoped per account + namespace; the delegate key never
-  leaves the server.
-- **Portable by construction:** the same namespace is readable from the web
-  app *and* from any agent via Recall's per-user MCP server (`/api/mcp`) —
-  web-captured memories answer Claude Code questions with zero re-entry.
-- **Resilient by design:** if Walrus is unreachable (or unconfigured in local
-  dev), capture still saves locally and recall falls back to keyword search +
-  generative rerank — the product never loses what you told it. `restore()`
-  rebuilds the relayer index from Walrus blobs at any time.
-
-Every recall answer returns **citations** to the source memories, so the
-answer is auditable and never fabricated.
-
-### Recall's own MCP server, per user
-
-Every signed-in user can generate an API key in the app and connect their
-agent to *their own* Walrus-backed memory at `/api/mcp` (read-only,
-auto-scoped by user): `list_people`, `search_memories`, `ask_memory`,
-`get_person`, `get_today`, `recent_memories`. See
-**[docs/ops-agent.md](docs/ops-agent.md)** for the exact steps, per-tool
-configs, and example prompts.
-
-### Your agent reads the same blobs — no export
-
-Because the memories *are* Walrus blobs, an agent connected to **Walrus
-Memory's own MCP server** (first-party `memwal_recall` / `memwal_remember`
-tools) recalls everything typed into the web app, with **zero re-entry**:
-
-```bash
-claude plugin marketplace add https://github.com/MystenLabs/MemWal.git
-claude plugin install memwal@memwal-plugins -s user
-```
-
-Then: capture someone in the browser, and in Claude Code ask *"Who did I met
-that's hiring React engineers?"* — same encrypted blob, different client.
-That is the portability claim, demonstrated rather than asserted.
-
-### Calibrated judgments: Jev decides, the writer only writes words
-
-A generative LLM writes good words and makes unaccountable choices. Recall
-splits the two — every *decision* is a typed TypeSafe (Jev) judgment with
-probabilities + confidence, and the generative model only renders prose from
-decided context (`lib/judge.ts`, see **[docs/judgments.md](docs/judgments.md)**).
-Jev is TypeSafe's own model and the writer is Qwen (via Nebius Token
-Factory) — neither is Anthropic or OpenAI, so the *Beyond the Big Two* track
-holds. Every judgment degrades gracefully to generative fallbacks when
-unconfigured.
-
-### Prose renderer: provider-agnostic, and never silently swapped
-
-The LLM only writes words; Jev decides. The writer is a **chain**, because
-hosted API keys expire without warning and a demo that quietly answers from a
-regex is worse than one that fails loudly:
+### Primary workflow
 
 ```
-primary  Nebius Token Factory — Qwen3-30B-A3B (open weights)
-  → any OpenAI-compatible API (OpenRouter, Together, …)
-  → Bedrock Mantle (Mistral Voxtral Mini 3B)
-  → secondary provider
-  → keyless open-weights gateway (GPT-OSS 20B)
-  → deterministic local rules (last resort, dev only)
+write one sentence  →  structure extracted  →  encrypted blob on Walrus
+        ↓                                             ↓
+  follow-up lands in Today                   ask anything, in your own words
+                                                      ↓
+                                        cited answer + verified sources
 ```
 
-Every answer and every capture shows **which model actually wrote it**, and
-`GET /api/health` actively calls the model and reports `status: degraded`
-when the writer is unavailable. A fallback is never hidden.
+### Activation moment
 
-**Why this matters for a memory product:** the memories are the durable part;
-the writer is interchangeable. Recall survives its writer changing — which is
-the same promise the Walrus layer makes about the app.
+The first time a question is asked in **different words** than the note and
+still returns the right memory — *"who's recruiting frontend people?"* →
+Sarah Chen, with the source cited. That's when it stops feeling like a notes
+app and starts feeling like memory.
+
+### Important interactions
+
+| Interaction | What happens |
+|---|---|
+| **Remember** | Extracts person (if any), facts, and follow-ups; writes one encrypted Walrus blob; shows who resolved the person and whether the blob is certified. |
+| **Dejavu** | Semantic search over your namespace → calibrated ranking → grounded synthesis → citation verification. Abstains when nothing is relevant. |
+| **Today** | Due/overdue follow-ups with a pre-drafted message. Done / Snooze / Dismiss. |
+| **Memory Health** | What Dejavu learned about which memories you actually rely on, and what the chain says about their storage window. |
+| **Verified onchain** | Independent Tatum Sui RPC check: blob objects, agent delegation, Walrus epoch, real expiry. |
+| **MCP** | Any agent can read your memory — via Dejavu's scoped server, or Walrus Memory's native tools. |
+
+### Differentiation
+
+| | Note apps | CRMs | Chatbots w/ memory | **Dejavu** |
+|---|---|---|---|---|
+| Capture effort | low | high | low | **one sentence** |
+| Answers questions | ✗ | partial | ✓ | **✓ cited** |
+| Structure extracted | ✗ | ✓ (manual) | ✗ | **✓ automatic** |
+| Memory portable across apps | ✗ | ✗ | ✗ | **✓ Walrus blobs** |
+| Independent proof it exists | ✗ | ✗ | ✗ | **✓ Sui RPC via Tatum** |
+| Proactive follow-up | ✗ | partial | ✗ | **✓ Today feed** |
+
+---
+
+## Innovation
+
+### What is genuinely novel
+
+1. **Answers that are verified, not just grounded.** Every citation is checked
+   by a calibrated judgment against its source; contradicted sources are
+   hidden, and if all fail the answer is withheld. Most RAG demos stop at
+   "here are some chunks".
+2. **Abstention as a feature.** A relevance judgment gates synthesis, so
+   unknown questions cost nothing and return an honest "I don't have a memory
+   of that yet" with zero citations.
+3. **A learning loop tied to storage economics.** Dejavu records which memories
+   are actually recalled, scores importance with an explainable formula
+   (reliance · recency · relationship · obligation), uses it as a ranking
+   tie-break, and pairs it with onchain expiry to say *which memories are worth
+   renewing first*.
+4. **Memory verified by a second provider.** Walrus Memory says the blob exists;
+   Tatum's Sui RPC proves it — the `Blob` object, its certification epoch, its
+   storage window, and that our delegate key is registered on the account.
+
+### What technology enables it
+
+- **Walrus Memory** — encrypted, content-addressed blobs with semantic recall
+  and per-user namespaces. Without it, portability would be a migration script.
+- **Tatum Sui RPC** — independent reads of Walrus system state, the MemWal
+  account, and every `Blob` object. Without it, durability would be a claim.
+- **TypeSafe Jev** — calibrated, typed judgments (choice / score / noul) for
+  identity, relevance, and citation verdicts. Without it, "confidence" would be
+  a vibe.
+- **Open-weight models (Qwen via Nebius Token Factory)** — cheap, structured
+  prose generation with a provider chain so no single key can break the product.
+
+### Why it is not a thin wrapper
+
+The wrapper is ~200 lines. Dejavu is ~4,000: a domain model (people, facts,
+commitments, usage), a capture pipeline with grounding gates, a four-stage
+recall pipeline, calibrated judgments with fallbacks, an onchain verification
+layer with caching and a credit budget, per-user isolation, an MCP server,
+durability and e2e verifiers, and 82 tests. The hard parts are the failure
+modes — and they're documented and tested.
+
+---
+
+## Hackathon Relevance
+
+### Selected track
+
+**Smart Agents for Real Life** — agents that pick up where they left off across
+tools and sessions. Dejavu is exactly that: a companion whose context survives
+the session, the app, and the model.
+
+### Sponsor technology, meaningfully integrated
+
+| Sponsor tech | Where it does real work |
+|---|---|
+| **Walrus Memory** | Every capture is one encrypted blob in a per-user namespace on **mainnet**. Dejavu searches it semantically, cites blob ids, and can rebuild its index from Walrus alone (`restore()`). Agents read the same blobs via Walrus Memory's native MCP. |
+| **Tatum Sui RPC** | Reads the Walrus system state (epoch, capacity, prices), the MemWalAccount (owner, active flag, delegate keys — verifying our agent's key is registered onchain), and every Walrus `Blob` object (certification epoch, storage window, size). This is the product's independent proof layer and the source of the expiry shown in the UI. |
+
+Not decorative: if Tatum is unavailable, the app says so and keeps working; if
+Walrus is unavailable, capture is preserved locally and the UI says the write
+is queued.
+
+### Judging criteria mapping
+
+| Criterion | Weight | Where it's addressed |
+|---|---|---|
+| Walrus & Tatum integration | 30% | One blob per capture in per-user namespaces; semantic recall with citations; `restore()` durability; native MCP portability. Tatum verifies every blob, the account's delegation, and the real storage window. |
+| Technical quality | 30% | Typed judgments with fallbacks, grounding gates, citation verification, 82 tests, 28-check e2e verifier, durability verifier, Tatum verifier, credit budget, per-user isolation. |
+| Creativity | 20% | Cited + machine-verified memory, calibrated abstention, an explainable importance loop tied to storage renewal. |
+| Presentation | 20% | Live app, one-click demo story, `/api/health` proof surface, this README, demo video. |
 
 ---
 
 ## Architecture
 
+### System overview
+
 ```mermaid
 flowchart TB
-    User(["User"]) --> UI["Recall UI<br/>(Next.js Composer)"]
-    UI --> Route{"Jev route<br/>remember | recall"}
+    subgraph client["Client"]
+        UI["Next.js UI<br/>capture · recall · Today"]
+        AGENT["External agent<br/>Claude Code / Cursor"]
+    end
 
-    Route -->|remember| Cap["captureMemory"]
-    Cap --> Person{"Jev resolve<br/>person?"}
-    Person --> WalrusW["memwal.remember<br/>namespace recall-userId"]
-    WalrusW --> Blob[("Walrus blob<br/>Seal-encrypted")]
-    Cap --> Proj[("Projection<br/>people / facts / due dates")]
+    subgraph app["Dejavu app (Fly.io)"]
+        PIPE["Capture & recall pipeline<br/>grounding · ranking · verification"]
+        PROJ[("Projection<br/>people · facts · commitments<br/>usage")]
+        JUDGE["Judgment layer<br/>TypeSafe Jev"]
+    end
 
-    Route -->|recall| Fast["memwal.recall<br/>semantic shortlist"]
-    Blob -.-> Fast
-    Fast --> Rank{"Jev Noul rank<br/>≥ 0.35?"}
-    Rank -->|none pass| Abstain["abstain<br/>no synthesis call"]
-    Rank --> Synth["Writer synthesis<br/>words only"]
-    Synth --> Verify{"Jev citation check<br/>supports?"}
-    Verify -->|contradicted| Hide["hidden / withheld"]
-    Verify --> Cited["cited answer ✓"]
+    subgraph sponsors["Sponsor infrastructure"]
+        WALRUS[("Walrus Memory<br/>encrypted blobs · mainnet")]
+        TATUM["Tatum Sui RPC<br/>system · account · blobs"]
+    end
 
-    Blob -.->|same namespace| MCP["MCP agent<br/>Claude / Cursor"]
-    Proj -.-> MCP
+    WRITER["Prose writer<br/>Qwen via Token Factory"]
+
+    UI --> PIPE
+    AGENT -->|MCP| PIPE
+    PIPE --> JUDGE
+    PIPE --> WRITER
+    PIPE --> WALRUS
+    PIPE --> PROJ
+    TATUM -.->|verify| WALRUS
+    PIPE --> TATUM
+
+    classDef focal fill:#fff,stroke:#e4572e,stroke-width:2px,color:#0f1115
+    classDef store fill:#f7f7f5,stroke:#0f1115,stroke-width:1px,color:#0f1115
+    class WALRUS,TATUM focal
+    class PROJ store
 ```
 
+### Capture and recall flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant A as Dejavu
+    participant J as Jev (decisions)
+    participant W as Walrus Memory
+    participant T as Tatum RPC
+    participant L as Writer (Qwen)
+
+    U->>A: "Met Sarah Chen, hiring React engineers"
+    par generation and decision in parallel
+        A->>L: extract structure
+        A->>J: which person is this?
+    end
+    A->>A: ground facts + headline in the note
+    A->>W: remember(enriched record, namespace)
+    W-->>A: job accepted → blob id
+    A->>T: verify Blob object, storage window
+    A-->>U: saved · certified · verified onchain
+
+    U->>A: "who's hiring frontend people?"
+    A->>W: recall(query, namespace)
+    W-->>A: semantic shortlist
+    A->>J: rank relevance (calibrated)
+    alt nothing relevant
+        A-->>U: "I don't have a memory of that yet."
+    else relevant
+        A->>L: synthesize from memories only
+        A->>J: verify each citation
+        A-->>U: answer + cited, verified sources
+    end
 ```
-app/                     Next.js 15 App Router (React 19, server components)
-  page.tsx               Landing + passwordless sign-in
-  workspace/page.tsx   Main workspace: Composer + Today feed + People
-  workspace/person/[id]/ Person profile: facts + memory timeline + blob links
-  actions.ts             Server actions (only write path; auth-scoped)
-components/
-  Composer.tsx           One box, auto-routed: Remember / Recall (cited ✓)
-  TodayCard.tsx          Follow-up card: Done / Snooze / copy draft
-lib/
-  memwal.ts              Walrus Memory client + per-user namespaces
-  judge.ts               TypeSafe judgments: route, resolve, rank, verify
-  store.ts               Local projection (people/facts/commitments/users)
-  memory.ts              Domain logic: captureMemory() + recall()
-  ai.ts                  Prose writer (Qwen via Token Factory) + provider chain
-  auth.ts                Signed httpOnly session; strict per-user isolation
-  env.ts                 Zod-validated, fail-fast config (no DB, no IAM)
-scripts/
-  verify-memwal.ts       Prove the Walrus round-trip (pnpm memwal:verify)
-  verify-durability.ts   Prove memory outlives the app (pnpm memwal:durability)
-  verify-e2e.ts          25-check product-path verifier (pnpm verify:e2e)
-  verify-judge.ts        Prove the judgments live (pnpm judge:verify)
-  seed.ts                Seed demo memories (pnpm seed — real Walrus blobs)
-  run-nudges.ts          Daily reconnect nudges (pnpm nudge:run)
-docs/
-  ops-agent.md           MCP server workflow + demo script
-  judgments.md           Judgment thresholds, fallbacks, cost/latency
-  submission-checklist.md Walrus Session 8 eligibility + prize tracks
-  video-script.md        Before/after demo recording script
-  walrus-feedback.md     Session feedback draft + bug-bounty tracker
+
+### Learning loop
+
+```mermaid
+flowchart LR
+    C["Capture"] --> M[("Memory<br/>on Walrus")]
+    M --> R["Dejavu"]
+    R --> H["Record hit<br/>which memory earned it"]
+    H --> I["Importance score<br/>reliance · recency · person · obligation"]
+    I --> B["Ranking tie-break"]
+    I --> X["Renewal priority<br/>vs onchain expiry"]
+    B --> R
+
+    classDef focal fill:#fff,stroke:#e4572e,stroke-width:2px,color:#0f1115
+    class I focal
 ```
+
+### Major components
+
+| Path | Responsibility |
+|---|---|
+| `lib/memory.ts` | Domain pipeline: `captureMemory()` and `recall()` — grounding, ranking, synthesis, verification. |
+| `lib/memwal.ts` | Walrus Memory client, per-user namespaces, blob URLs, durability helpers. |
+| `lib/tatum.ts` | Sui RPC: Walrus system state, MemWal account + delegate check, blob index, expiry math, credit budget. |
+| `lib/judge.ts` | Calibrated judgments: intent routing, person resolution, relevance, citation verification. |
+| `lib/ai.ts` | Prose writer with provider chain and attribution; extraction schema. |
+| `lib/health.ts` | Learning loop: usage → explainable importance → ranking boost + renewal priority. |
+| `lib/store.ts` | Local projection (people, facts, commitments, users, keys, usage, audit). |
+| `app/api/mcp` | Read-only MCP server scoped to the user's API key. |
+| `app/api/health` | Proof surface: Walrus, Tatum onchain verification, writer status, counts. |
+
+### Data flow and boundaries
+
+- **Browser → server actions only.** Every write goes through a server action that
+  resolves the authenticated user first; there is no client-side database access.
+- **Server → Walrus Memory.** One operator MemWalAccount pays for storage; each
+  app user gets a deterministic namespace (`recall-<userId>`). The delegate key
+  never leaves the server.
+- **Server → Tatum.** Read-only JSON-RPC, paced and cached, used for verification
+  and expiry. Never used to write.
+- **Server → writer.** OpenAI-compatible chat completions; the model only writes
+  prose from decided context.
+- **Projection is disposable.** It carries structure for the UI, not memory
+  content. Losing it degrades the product but never loses a memory.
+
+### Important technical decisions
+
+| Decision | Why |
+|---|---|
+| One blob per capture (raw text + structure together) | A recall returns a coherent record with a citation, not five fragments. `analyze()` was measured and rejected for this reason. |
+| Grounding gates on headline, company and fact values | A fact the user never wrote is worse than a missing fact. Invented titles were observed and fixed. |
+| Abstain before synthesis | Saves cost and prevents confident nonsense on unknown questions. |
+| Verify citations, hide contradicted ones | Trust is the product. A contradicted source means the synthesis drifted. |
+| Provider chain for prose | Hosted keys expire; a demo must never silently answer from a regex. |
+| Onchain verification cached + budgeted | Independent proof without burning the free tier (3 RPS, 100K credits). |
+
+### External services
+
+| Service | Role | Failure behavior |
+|---|---|---|
+| Walrus Memory (mainnet) | Durable encrypted memory | Capture saved locally, write queued; recall falls back to the local projection |
+| Tatum Sui RPC | Independent verification, expiry | Panel reports "unavailable"; app keeps working on the relayer's word |
+| Nebius Token Factory (Qwen) | Prose writer | Falls through the provider chain; UI shows the writer that answered |
+| TypeSafe Jev | Decisions | Falls back to generative ranking / writer's proposal |
+| Fly.io | Hosting + persistent volume | Single instance; volume holds the projection |
+
 ---
 
-## Vision & roadmap
+## Running
 
-Memory should be infrastructure, not a feature: portable across sessions,
-apps, and providers; encrypted by default; owned by the user, not the app.
-Recall is the first client of that thesis — a companion whose store outlives
-it (delete the local index and it still answers; `pnpm memwal:durability`
-proves it).
+### Prerequisites
 
-Post-session roadmap: multi-turn conversation; Sui-wallet sign-in alongside
-email; shared team/family namespaces; proactive digests (email/Telegram)
-instead of pull-only Today; a Telegram/WhatsApp channel so capture happens
-where life happens; blob-expiry renewal UX ahead of the ~2-year horizon.
-
-## GTM plan
-
-1. **Wedge where forgetting costs most:** founder, sales, recruiting, and
-   community-builder circles — the article and promo go to those communities,
-   not crypto channels.
-2. **Single-player value first:** one user, one namespace, compounding memory.
-   No team sale, no onboarding call, no admin panel.
-3. **Distribution through agents:** native Walrus MCP (`memwal_*`) plus
-   Recall's per-user MCP server put the same memory inside Claude Code and
-   Cursor, where builders already live.
-4. **Monetization later:** hosted namespaces with renewal guarantees for pros
-   and teams; Walrus stays the store.
-
----
-
-## Getting started
-
-### 1. Prerequisites
 - Node ≥ 20 (tested on 22), `pnpm`
-- A Walrus Memory account: generate one at
-  [memory.walrus.xyz](https://memory.walrus.xyz) (mainnet — required for the
-  Session's ≥10-blob proof) or
-  [staging.memory.walrus.xyz](https://staging.memory.walrus.xyz) (testnet).
-  No database to install — the structured projection is a local JSON file.
+- A **Walrus Memory** account — [memory.walrus.xyz](https://memory.walrus.xyz)
+- Optional: a **Tatum** API key (free plan) for onchain verification
+- Optional: an OpenAI-compatible writer key (Nebius Token Factory, OpenRouter, …)
 
-### 2. Configure
-```bash
-cp .env.example .env.local
-# set AUTH_SECRET (openssl rand -base64 48)
-# set MEMWAL_PRIVATE_KEY + MEMWAL_ACCOUNT_ID (from the dashboard above)
-# optional: BEDROCK_API_KEY + TYPESAFE_API_KEY — or AI_PROVIDER=mock for zero-cred demo
-```
+### Installation
 
-### 3. Install, init, prove, seed
 ```bash
 pnpm install
-pnpm store:init         # ensure the local projection file exists
-pnpm memwal:verify      # prove the Walrus round-trip (health → blob → recall)
-pnpm judge:verify       # prove the judgments live (route → resolve → rank → verify)
-pnpm seed               # optional: demo user with realistic memories (real blobs)
+cp .env.example .env.local
+pnpm store:init        # create the local projection file
+pnpm memwal:verify     # prove the Walrus round-trip
+pnpm dev               # http://localhost:3000
 ```
 
-### 3b. Prove the whole thing (before you demo it)
+### Environment variables
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `AUTH_SECRET` | yes | Session signing (≥16 chars) |
+| `MEMWAL_PRIVATE_KEY` | yes | Walrus Memory delegate key (server-only) |
+| `MEMWAL_ACCOUNT_ID` | yes | MemWalAccount object id on Sui |
+| `MEMWAL_SERVER_URL` | no | Relayer URL (defaults to mainnet) |
+| `TATUM_API_KEY` | recommended | Onchain verification via Sui RPC |
+| `TATUM_SUI_RPC_URL` | no | Defaults to `https://sui-mainnet.gateway.tatum.io` |
+| `TOKENFACTORY_API_KEY` | recommended | Primary prose writer (Qwen) |
+| `TOKENFACTORY_MODEL` | no | Defaults to `Qwen/Qwen3-30B-A3B-Instruct-2507` |
+| `TYPESAFE_API_KEY` | recommended | Calibrated judgments |
+| `AI_PROVIDER` | no | `mock` for a fully offline demo |
+| `DEJAVU_DATA_PATH` | no | Projection path (defaults to `./data/recall.json`) |
+
+Every key is optional in the sense that the app degrades gracefully — but the
+degradation is **visible**, never silent.
+
+### Development commands
+
 ```bash
-pnpm verify             # typecheck + unit tests + verify:e2e + memwal:durability
-pnpm verify:e2e         # 25 checks: capture structure, cited recall, abstention, isolation
-pnpm memwal:durability  # blobs owned on Sui; recall survives losing the local index
+pnpm dev            # dev server
+pnpm typecheck      # strict TypeScript
+pnpm test           # 82 unit tests (hermetic, no network)
+pnpm lint           # eslint
 ```
 
-### 4. Run
+### Test and verification commands
+
 ```bash
-pnpm dev             # http://localhost:3000
+pnpm test              # unit tests
+pnpm verify:e2e        # 28 checks over the real product path (live Walrus)
+pnpm memwal:verify     # Walrus round-trip: health → blob → recall
+pnpm memwal:durability # blobs owned onchain; recall survives losing the index
+pnpm memwal:analyze    # measured comparison: analyze() vs our extraction
+pnpm judge:verify      # judgments live: route, resolve, rank, verify citations
+pnpm tatum:verify      # onchain: system state, delegation, blobs, expiry
+pnpm mcp:verify        # MCP server with a user API key
+pnpm verify            # typecheck + tests + e2e + durability
 ```
-Sign in with any email (passwordless — a private memory space is created
-instantly). If you seeded, sign in as **`demo@recall.app`**.
+
+### Production build
+
+```bash
+pnpm build && pnpm start
+fly deploy --ha=false    # Fly.io: 256MB machine + 1GB volume
+```
 
 ---
 
-## Try it (90-second demo script — the before/after judges score)
+## Demo
 
-1. **Before (amnesia baseline):** in a fresh session with no memories, ask
-   *"Who do I know that's hiring React engineers?"* → "I don't have a memory
-   of that yet."
-2. **Remember:** paste
-   *"Met Sarah Chen at the AI meetup — founder at Nimbus, ex-Stripe, hiring senior
-   React engineers. Promised to intro her to Priya."*
-   → Recall confirms what it saved (as a Walrus blob) and adds the follow-up
-   to **Today**.
-3. Add two more people the same way.
-4. **Recall (new session, different words):** ask
-   *"Who did I meet that's hiring frontend people?"*
-   → You get a natural-language answer **plus the exact memory it came from**,
-   scored (e.g. 0.95) and ✓-verified — click the name to open the person's
-   profile + timeline. Same question the amnesiac bot failed — now answered
-   from portable memory.
-5. **Follow through:** in the **Today** panel, hit *Done* / *Snooze*, or copy the
-   pre-drafted reconnect message.
+### Deployed application
 
----
+**https://recall-walrus-memory.fly.dev**
 
-## Security & privacy
+### Required setup
 
-Security is treated as an engineering requirement:
+None. Sign in with any email (passwordless, instant private namespace), then
+press **"Load the demo story"** — eight realistic memories go through the real
+pipeline and become eight genuine Walrus mainnet blobs.
 
-- **Memory is encrypted before storage** (Seal) and owned by the operator
-  account; per-user isolation is enforced server-side via namespaces — the
-  delegate key never reaches the browser.
-- **Per-user isolation:** every projection query is scoped by the authenticated
-  `user_id`; there is no cross-user read/write path. Server actions resolve
-  the user before any data access.
-- **Sessions** are signed (HS256, `jose`), `httpOnly`, `sameSite=lax`, `secure`
-  in production.
-- **Grounded AI:** recall answers are constrained to retrieved memories and cite
-  their sources; citations are machine-verified and contradictions are
-  withheld, never shown.
-- **Audit log:** captures, recalls, abstentions, and status changes are
-  recorded in the projection.
-- **Rate limiting:** capture and recall are bounded per user (token bucket,
-  30 req/min) so a runaway client can't exhaust quotas or spam Walrus.
-- **Structured logging:** every sign-in, capture, recall, judgment, and status
-  change emits one JSON line (`lib/log.ts`) — ready for CloudWatch Logs
-  indexing, no prose parsing.
-- **Fail-fast config:** `lib/env.ts` validates env at startup so misconfiguration
-  can't silently ship.
+### Demo flow (~90 seconds)
 
-**MVP non-goals (documented, not accidental):** email magic-link *verification*
-is stubbed (sign-in issues a session directly) for a frictionless demo; add a
-one-time-link step before production. Per-field encryption at rest in the local
-projection is future work (Walrus blobs are already Seal-encrypted).
+1. **Load the demo story.** Watch the confirmations: person resolved, facts
+   extracted, follow-up added, blob certified.
+2. **Ask in different words:** *"Who did I meet that's recruiting frontend
+   people?"* → Sarah Chen, cited, scored, ✓ verified.
+3. **Ask something unknown:** *"Who do I know in Tokyo who plays chess?"* →
+   an honest "I don't have a memory of that yet", zero citations.
+4. **Open the ⬡ chip** next to a memory — that's the encrypted blob on the
+   public aggregator. Anyone can fetch it; only the owner can read it.
+5. **Check "Verified onchain"** — Walrus epoch, agent authorization, blob count,
+   and the real storage expiry read through Tatum.
+6. **Check "Memory health"** — which memories you actually rely on, and which
+   would be worth renewing first.
+
+### What a judge should try first
+
+Ask a question the note doesn't literally answer. The gap between "semantic
+recall" and "keyword search" is the product.
 
 ---
 
-### Deliberate non-uses (measured, not assumed)
+## Verification
 
-- **`analyze()`** — Walrus Memory's server-side fact extraction works well
-  (`pnpm memwal:analyze` shows the output), but it returns each fact as its
-  own unattributed blob. Recall needs a *resolved person*, a *source-memory
-  citation*, and *commitments with due dates*, all in **one** record so a
-  recall returns something coherent. We keep our own extraction and store the
-  enriched record as a single blob.
-- **Walrus Sites / Oyster / Seal-direct** — out of scope: this is a chatbot
-  whose memory layer matters, not a static site host.
+Honest status of every claim in this README.
 
-## Services used
+| Capability | Status | How to verify |
+|---|---|---|
+| Capture → Walrus mainnet blob | **Real, live, onchain** | ⬡ chip; `pnpm memwal:verify`; `GET /api/health` |
+| Semantic recall across sessions | **Real, live** | Ask in different words; citations show blob ids |
+| Citations verified against sources | **Real, live** | ✓ badges; `pnpm judge:verify` |
+| Abstention on unknown questions | **Real, live** | Ask about Tokyo chess |
+| Per-user namespace isolation | **Real** | `pnpm verify:e2e` (isolation section) |
+| Agent reads the same blobs | **Real** | Native Walrus MCP; `docs/ops-agent.md` |
+| Durability: recall without local index | **Real** | `pnpm memwal:durability` |
+| Onchain verification (Tatum) | **Real, live, externally verifiable** | `pnpm tatum:verify`; Sui explorer link in UI |
+| Agent delegation onchain | **Real, live** | Delegate key shown as registered on the MemWalAccount |
+| Storage expiry | **Real, onchain** | `end_epoch` 55 → 2027-05-04 (196 days at time of writing) |
+| Learning loop (importance, ranking) | **Real** | Memory Health panel; `tests/health.test.ts` |
+| Prose writer | **Real**, with a visible fallback chain | "written by …" on every answer; `/api/health` |
+| Demo data | **Real captures** | "Load the demo story" runs the real pipeline |
+| `AI_PROVIDER=mock` mode | **Simulated** | Dev-only deterministic extractor/embedder; never presented as the real path |
+| Multi-turn conversation context | **Not implemented** | Each recall is independent (see Limitations) |
+| Email ownership verification | **Not implemented** | Passwordless sign-in issues a session directly |
 
-- **Walrus Memory (mainnet)** — the memory layer: encrypted blobs, semantic
-  recall, per-user namespaces. Blob proof: `GET /api/health` →
-  `counts.walrus_blobs`.
-- **Tatum (Sui RPC)** — independent onchain verification: Walrus epoch and
-  capacity, MemWalAccount delegation (is our agent's key registered?), every
-  memory's `Blob` object, and the real storage expiry. Proof:
-  `pnpm tatum:verify`.
-- **TypeSafe (Jev)** — every decision: intent, identity, relevance, citation
-  verdicts. Proof: `pnpm judge:verify`.
-- **Nebius Token Factory** (OpenAI-compatible, `Qwen/Qwen3-30B-A3B-Instruct-2507`,
-  open weights — *Beyond the Big Two* track): the prose writer, behind a
-  provider chain that degrades loudly rather than silently.
-- **Amazon Bedrock — Mantle endpoint** (Mistral Voxtral Mini 3B): secondary
-  writer on the same chain.
-- **Fly.io**: hosts the live demo URL (single shared-1x 256MB machine,
-  scale-to-zero, 1GB volume for the projection) — see `docs/deploy-fly.md`.
-- **AWS Lambda + EventBridge** *(optional)*: runs the daily nudge cron
-  serverlessly (see `infra/nudge-lambda.ts`).
+The UI never claims more than the system can prove: a capture says *certified*,
+*certifying*, or *write queued*; an answer names the model that wrote it; an
+onchain panel says *unavailable* rather than pretending.
 
-## Tech
-Next.js 15 · React 19 · TypeScript (strict) · Tailwind · Walrus Memory
-(portable encrypted memory + semantic recall · per-user namespaces · MCP
-server) · TypeSafe Jev (calibrated judgments: route, resolve, rank, verify) ·
-Nebius Token Factory (Qwen3-30B-A3B, prose) · AWS Bedrock (secondary) · AWS Lambda · Fly.io
-Hosting · `jose` · Zod.
+---
 
-## License
-MIT — see [LICENSE](./LICENSE).
+## Security and Reliability
+
+### Permission model
+
+- **Per-user isolation** is enforced server-side: every query is scoped by the
+  authenticated `user_id`; the browser never talks to Walrus or Tatum directly.
+- **Namespaces are an application boundary, not a cryptographic one.** The
+  operator's delegate key can read every namespace under the account. Isolation
+  depends on the server mapping an authenticated session to the correct
+  namespace — stated plainly because it matters.
+- **API keys** (for MCP) are stored as SHA-256 hashes with a display prefix; the
+  raw key is shown once. Read-only and scoped to one user.
+- **Sessions** are signed HS256 JWTs in `httpOnly`, `sameSite=lax`, `secure`
+  cookies.
+
+### Sensitive flows
+
+| Flow | Protection |
+|---|---|
+| Sign-in | Signed session cookie; email ownership verification is stubbed (known gap) |
+| Capture | Zod-validated, length-capped, rate-limited (30/min/user) |
+| Dejavu | Rate-limited; synthesis constrained to retrieved memories |
+| MCP | Bearer key → hash lookup → user-scoped tools only |
+| Onchain reads | Read-only RPC, server-side key, paced and cached |
+
+### Failure handling
+
+- **Walrus unreachable:** capture is kept locally and the UI says the write is
+  queued; recall falls back to the local projection.
+- **Writer down:** provider chain falls through; every answer shows the model
+  that answered; `/api/health` reports `degraded`.
+- **Tatum down / budget spent:** onchain panel reports unavailable and serves
+  the last known values; the product keeps working.
+- **Jev down:** falls back to generative ranking and the writer's proposal.
+- **Rate limits:** relayer writes retry once with backoff; Tatum requests are
+  serialized, cached, and capped at 120/hour.
+
+### Known risks
+
+- **Prompt injection via stored content.** A memory could contain text that
+  tries to steer synthesis. Mitigations: synthesis is grounded, citations are
+  verified, and contradicted sources are hidden — but a memory is still
+  untrusted input and should be treated as data, not instructions.
+- **Projection is unencrypted at rest.** Walrus blobs are Seal-encrypted; the
+  local projection (names, facts) is not. It lives on an encrypted Fly volume.
+- **Single instance.** The projection is a JSON file on one machine; horizontal
+  scaling needs a shared store.
+- **Delegate key compromise** grants read access to every namespace under the
+  account. Rotation is a dashboard operation, not automated here.
+
+---
+
+## Limitations and Roadmap
+
+### Current limitations
+
+- **Text only.** No images, voice, or file ingestion.
+- **No multi-turn conversation.** Dejavu answers each question independently;
+  the thread in the UI is display-only.
+- **No edit or delete UI.** Memories are append-only; Walrus blobs are immutable
+  by design, so deletion needs an explicit product decision.
+- **Storage lifetime is ~196 days** at the relayer's current 15-epoch purchase.
+  Expiry is surfaced, but renewal is manual.
+- **Free-tier constraints.** Tatum: 3 RPS, 100K credits, no batch JSON-RPC.
+- **Email sign-in is not verified.** Documented, not accidental.
+- **Demo-focused auth.** One operator MemWalAccount; multi-tenant accounts per
+  user would be the production shape.
+
+### Naming note (why two identifiers still say `recall`)
+
+The product is **Dejavu**. Two identifiers keep the original name on purpose:
+
+- **Walrus namespace prefix `recall-<userId>`** — renaming it would orphan every
+  blob already written to mainnet, because recall is scoped by exact namespace.
+- **Fly hostname `recall-walrus-memory.fly.dev`** — changing it would break the
+  submitted demo URL.
+
+Both are implementation details; the product, UI, MCP server, API keys and docs
+are Dejavu.
+
+### Known tradeoffs
+
+| Tradeoff | Choice | Cost |
+|---|---|---|
+| One blob per capture | Coherent records, one citation per memory | Coarser granularity than per-fact blobs |
+| Local JSON projection | Zero infrastructure, one-command run | Not horizontally scalable |
+| Calibrated judgments on every recall | Trust and abstention | ~2 extra model calls per question |
+| Onchain verification on render | Independent proof | RPC budget; mitigated by caching |
+
+### Next steps
+
+1. **Multi-turn recall** — carry conversation context into retrieval.
+2. **Note-first surfaces** — a note detail view, tags, and search filters, so
+   non-person memories feel as first-class as people do.
+3. **Renewal flow** — one-click extend for memories the health loop marks as
+   important, before their storage window closes.
+4. **Per-user Walrus accounts** — users own their MemWalAccount, not just a
+   namespace.
+5. **Verified sign-in** — magic link or Sui wallet signature.
+6. **Export and delete** — data rights for an append-only store (tombstones +
+   key destruction).
+
+### Future product direction
+
+Memory as infrastructure: the same namespace readable by every agent a person
+uses, owned by the person, with the app as one client among many. Dejavu's job
+is to make capture effortless and recall trustworthy — not to be the place your
+memory dies.

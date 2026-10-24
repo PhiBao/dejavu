@@ -16,7 +16,7 @@ export default async function Home({
       <div className="mx-auto flex min-h-screen max-w-5xl flex-col px-6">
         <header className="flex items-center gap-2 pt-8">
           <span className="text-xl">🪳</span>
-          <span className="font-semibold tracking-tight">Recall</span>
+          <span className="font-semibold tracking-tight">Dejavu</span>
         </header>
 
         <div className="flex flex-1 flex-col items-center justify-center py-16 text-center">
@@ -24,7 +24,7 @@ export default async function Home({
             Never forget a person again.
           </h1>
           <p className="mt-6 max-w-xl text-lg text-paper/70">
-            Tell Recall about the people you meet, in plain words. It remembers
+            Tell Dejavu anything worth remembering, in plain words. It remembers
             every detail, recalls it instantly, and nudges you to follow up at
             the right moment.
           </p>
@@ -35,10 +35,10 @@ export default async function Home({
         <section className="grid gap-6 pb-20 sm:grid-cols-3">
           <Feature
             title="Capture in seconds"
-            body="Just say what happened. Recall extracts who you met, the details, and what you promised."
+            body="Just say what happened. Dejavu extracts the person, the details, and what you promised."
           />
           <Feature
-            title="Recall anything"
+            title="Ask anything"
             body="Ask “who was hiring React devs?” and get an answer with the exact memory it came from."
           />
           <Feature

@@ -17,7 +17,7 @@ import type { AppUser } from "./types";
  * of scope for the hackathon MVP and documented as a non-goal.
  */
 
-const COOKIE = "recall_session";
+const COOKIE = "dejavu_session";
 const MAX_AGE_SEC = 60 * 60 * 24 * 30; // 30 days
 
 function secretKey(): Uint8Array {

@@ -11,9 +11,9 @@ import {
 } from "@/lib/memory";
 
 /**
- * Recall's own MCP server — a read-only Model Context Protocol endpoint.
+ * Dejavu's own MCP server — a read-only Model Context Protocol endpoint.
  *
- * A signed-in Recall user generates an API key (in the app), then any MCP
+ * A signed-in Dejavu user generates an API key (in the app), then any MCP
  * client (Claude Code, Cursor, ...) connects here with `Authorization: Bearer
  * <key>` and queries THEIR memory. Every tool is scoped by the key's
  * user_id, so a key can never read another user's data.
@@ -247,7 +247,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         result: {
           protocolVersion: PROTOCOL_VERSION,
           capabilities: { tools: {} },
-          serverInfo: { name: "recall-mcp", version: "2.0.0" },
+          serverInfo: { name: "dejavu-mcp", version: "2.0.0" },
         },
       },
       { headers: { "mcp-session-id": crypto.randomUUID() } },

@@ -8,8 +8,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Recall — Remember Every Person",
-  description: "A relationship memory agent with production-grade persistent memory.",
+  title: "Dejavu — a memory companion",
+  description: "A memory companion for everything worth remembering — people, notes, promises — with portable, verifiable memory on Walrus.",
 };
 
 export default function RootLayout({

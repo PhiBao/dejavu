@@ -17,7 +17,7 @@ function commandFor(tool: ToolKey, key: string): string {
   const url = `${LIVE_URL}/api/mcp`;
   switch (tool) {
     case "claude":
-      return `claude mcp add recall ${url} --transport http --header "Authorization: Bearer ${key}"`;
+      return `claude mcp add dejavu ${url} --transport http --header "Authorization: Bearer ${key}"`;
     case "cursor":
       return JSON.stringify(
         {
@@ -64,7 +64,7 @@ function humanStepsFor(tool: ToolKey): string[] {
       return [
         "Create (or open) a file named mcp.json inside the .cursor folder in your project.",
         "Paste the JSON below into that file and save.",
-        "Restart Cursor. Then open Settings → MCP and make sure “recall” is enabled.",
+        "Restart Cursor. Then open Settings → MCP and make sure “dejavu” is enabled.",
       ];
     case "vscode":
       return [
@@ -105,7 +105,7 @@ export function ConnectGuide({
     <main className="min-h-screen bg-paper text-ink">
       <div className="mx-auto max-w-2xl px-6 py-10">
         <Link href="/" className="text-sm text-ink/50 transition hover:text-ink">
-          ← Back to Recall
+          ← Back to Dejavu
         </Link>
 
         <header className="mt-4">
@@ -125,7 +125,7 @@ export function ConnectGuide({
           <p className="mt-2 text-sm text-ink/70">
             Sign in and generate a key — it looks like{" "}
             <code className="rounded bg-ink/5 px-1.5 py-0.5 font-mono text-xs">
-              recu_abc123…
+              djav_abc123…
             </code>
           </p>
 
@@ -188,7 +188,7 @@ export function ConnectGuide({
           <input
             value={key}
             onChange={(e) => setKey(e.target.value)}
-            placeholder="Paste your recu_… key here"
+            placeholder="Paste your djav_… key here"
             className="mt-2 w-full rounded-xl border border-ink/10 bg-white px-4 py-3 font-mono text-sm focus:border-accent focus:outline-none"
           />
           <p className="mt-1 text-xs text-ink/40">

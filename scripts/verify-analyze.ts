@@ -4,7 +4,7 @@
  * We deliberately do NOT use this in the capture path, and this script exists
  * so that decision is a measured one rather than an oversight. It runs the
  * same sentence through analyze() and prints what comes back, next to what
- * Recall's own pipeline produces, so the trade-off is on the record.
+ * Dejavu's own pipeline produces, so the trade-off is on the record.
  *
  * Usage: pnpm memwal:analyze
  */
@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 
 const P = join(tmpdir(), `recall-analyze-${randomUUID().slice(0, 8)}.json`);
-process.env.RECALL_DATA_PATH = P;
+process.env.DEJAVU_DATA_PATH = P;
 
 const { MemWal } = await import("@mysten-incubation/memwal");
 const { env } = await import("../lib/env");
@@ -56,7 +56,7 @@ async function main() {
     console.log(`     unavailable: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  console.log("\n[analyze] B) Recall's pipeline — Bedrock extraction + Jev identity");
+  console.log("\n[analyze] B) Dejavu's pipeline — Bedrock extraction + Jev identity");
   const t1 = Date.now();
   const cap = await captureMemory(uid, STORY);
   console.log(
@@ -68,7 +68,7 @@ async function main() {
     "\n[analyze] VERDICT: we keep our own extraction. analyze() gives untyped,",
   );
   console.log(
-    "unattributed facts as separate blobs; Recall needs a resolved person, a",
+    "unattributed facts as separate blobs; Dejavu needs a resolved person, a",
   );
   console.log(
     "source-memory citation, and commitments with due dates — and it must all",

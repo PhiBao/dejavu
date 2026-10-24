@@ -2,10 +2,10 @@ import { env } from "./env";
 import { log } from "./log";
 
 /**
- * Tatum Sui RPC — independent onchain verification for Recall's memory layer.
+ * Tatum Sui RPC — independent onchain verification for Dejavu's memory layer.
  *
  * Why this exists: Walrus Memory's relayer is trustworthy, but "trust me" is
- * not proof. Everything Recall claims about persistence can be checked
+ * not proof. Everything Dejavu claims about persistence can be checked
  * directly on Sui through a second provider:
  *
  *   1. WALRUS SYSTEM  — current epoch, shard count, capacity, storage price.
@@ -227,7 +227,7 @@ export interface BlobOnchain {
 // --- Credit budget ---------------------------------------------------------
 // The free plan carries 100K credits (lifetime, not monthly) and auto-upgrades
 // when exhausted, so an unbounded poller could spend the user's money. This
-// keeps Recall inside the free tier by construction: a hard hourly request
+// keeps Dejavu inside the free tier by construction: a hard hourly request
 // budget, after which we serve the last known good values instead of asking.
 
 const CREDIT_BUDGET_PER_HOUR = 120;

@@ -7,7 +7,7 @@
  * keeps only headline/company evidenced in the note text, and writes the
  * result back. No new memories, no Walrus writes — profile repair only.
  *
- * Usage: RECALL_DATA_PATH=./data/recall.json pnpm exec tsx scripts/repair-headlines.ts
+ * Usage: DEJAVU_DATA_PATH=./data/recall.json pnpm exec tsx scripts/repair-headlines.ts
  */
 import { loadEnv } from "./load-env";
 loadEnv();

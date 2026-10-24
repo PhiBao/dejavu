@@ -28,7 +28,7 @@ export function isMemwalConfigured(): boolean {
   }
 }
 
-/** Deterministic per-user namespace. Recall/restore match it exactly. */
+/** Deterministic per-user namespace. Dejavu/restore match it exactly. */
 export function userNamespace(userId: string): string {
   return `recall-${userId.toLowerCase()}`;
 }

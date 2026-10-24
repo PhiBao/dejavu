@@ -1,5 +1,5 @@
 /**
- * Verify Recall's memory layer independently, through Tatum's Sui RPC.
+ * Verify Dejavu's memory layer independently, through Tatum's Sui RPC.
  *
  * Proves three claims against chain state instead of trusting the relayer:
  *   1. the Walrus system is live and what epoch it is on

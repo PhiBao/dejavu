@@ -17,14 +17,14 @@ import {
 } from "@/lib/store";
 
 // Isolate the projection store per test file run.
-process.env.RECALL_DATA_PATH = join(
+process.env.DEJAVU_DATA_PATH = join(
   tmpdir(),
   `recall-test-${process.pid}.json`,
 );
 
 beforeEach(() => {
   try {
-    rmSync(process.env.RECALL_DATA_PATH as string, { force: true });
+    rmSync(process.env.DEJAVU_DATA_PATH as string, { force: true });
   } catch {
     /* ignore */
   }

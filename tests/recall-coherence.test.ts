@@ -8,11 +8,11 @@ import { createUser } from "@/lib/store";
 
 // AI_PROVIDER=mock in vitest config: deterministic local paths, no network.
 // Isolated projection per run.
-process.env.RECALL_DATA_PATH = join(tmpdir(), `recall-contradict-${process.pid}.json`);
+process.env.DEJAVU_DATA_PATH = join(tmpdir(), `recall-contradict-${process.pid}.json`);
 
 beforeEach(() => {
   try {
-    rmSync(process.env.RECALL_DATA_PATH as string, { force: true });
+    rmSync(process.env.DEJAVU_DATA_PATH as string, { force: true });
   } catch {
     /* ignore */
   }

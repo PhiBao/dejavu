@@ -6,7 +6,7 @@ import { generateApiKeyAction, revokeApiKeyAction } from "@/app/actions";
 import type { ApiKey } from "@/lib/api-keys";
 
 /**
- * API Keys panel: let the user generate keys for Recall's MCP server.
+ * API Keys panel: let the user generate keys for Dejavu's MCP server.
  * The raw key is shown once (copy it), then only the prefix is retained.
  */
 export function ApiKeysPanel({ keys }: { keys: ApiKey[] }) {
@@ -51,7 +51,7 @@ export function ApiKeysPanel({ keys }: { keys: ApiKey[] }) {
 
       <p className="mb-3 text-xs text-ink/50">
         Generate a key to let your own agent (Claude Code, Cursor, …) read your
-        memory through Recall&apos;s MCP server — scoped to you only.{" "}
+        memory through Dejavu&apos;s MCP server — scoped to you only.{" "}
         <Link href="/guide" className="font-medium text-accent hover:underline">
           How to connect →
         </Link>
@@ -88,7 +88,7 @@ export function ApiKeysPanel({ keys }: { keys: ApiKey[] }) {
             Connect your agent (Claude Code)
           </p>
           <code className="block break-all rounded bg-paper px-2 py-1.5 font-mono text-[11px] leading-relaxed text-ink/70">
-            {`claude mcp add recall ${mcpUrl} --transport http --header "Authorization: Bearer ${newKey}"`}
+            {`claude mcp add dejavu ${mcpUrl} --transport http --header "Authorization: Bearer ${newKey}"`}
           </code>
           <p className="mt-2 text-[11px] leading-relaxed text-ink/50">
             Then ask: <i>&quot;which person is hiring React engineers?&quot;</i>{" "}

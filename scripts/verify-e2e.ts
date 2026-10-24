@@ -27,7 +27,7 @@ import { randomUUID } from "node:crypto";
 
 // Isolate from any local store BEFORE importing the domain layer.
 const E2E_PATH = join(tmpdir(), `recall-e2e-${randomUUID().slice(0, 8)}.json`);
-process.env.RECALL_DATA_PATH = E2E_PATH;
+process.env.DEJAVU_DATA_PATH = E2E_PATH;
 
 const { isMemwalConfigured } = await import("../lib/memwal");
 const { isMockAI } = await import("../lib/env");
@@ -79,7 +79,7 @@ async function main() {
   const people = await mem.listPeople(uid);
   check("people list populated", people.length >= 3, `${people.length} people: ${people.map((p) => p.name).join(", ")}`);
 
-  // --- 2. Recall: paraphrase, citations, verification ---------------------
+  // --- 2. Dejavu: paraphrase, citations, verification ---------------------
   console.log("\n[e2e] recall — paraphrase must work, answers must be cited");
   const q = await mem.recall(uid, "Who did I meet that's recruiting frontend people?");
   check("paraphrase answer found Sarah", /sarah/i.test(q.answer), q.answer.slice(0, 90));

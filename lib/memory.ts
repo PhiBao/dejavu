@@ -103,7 +103,12 @@ export function isGroundedIn(value: string | null, text: string): boolean {
   const tokens = value
     .toLowerCase()
     .split(/[^a-zà-ÿ0-9]+/i)
-    .filter((t) => t.length > 2 && !GROUNDING_STOPWORDS.has(t));
+    .filter(
+      (t) =>
+        !GROUNDING_STOPWORDS.has(t) &&
+        // Keep numbers of any length: "8%" and "$40" are evidence too.
+        (t.length > 2 || /^\d+$/.test(t)),
+    );
   if (tokens.length === 0) return false;
   const hay = text.toLowerCase();
   return tokens.every((t) => hay.includes(t));
@@ -274,19 +279,28 @@ export async function captureMemory(
   if (opts?.defer) opts.defer(backfill);
   else await backfill;
 
-  // 4. Store derived facts (each cites this memory).
+  // 4. Store derived facts (each cites this memory). Notes without a person
+  //    still get structured facts — "passport expires in March" is useful
+  //    whether or not a person is involved. Values must be grounded in the
+  //    note: a fact the user never wrote is worse than a missing fact.
   let factsAdded = 0;
-  if (person) {
-    for (const f of extracted.facts) {
-      addFact({
-        userId,
-        personId: person.id,
+  for (const f of extracted.facts) {
+    if (!isGroundedIn(f.value, text)) {
+      audit(userId, "fact_dropped_ungrounded", {
+        memoryId: memory.id,
         attribute: f.attribute,
-        value: f.value,
-        sourceMemoryId: memory.id,
+        value: f.value.slice(0, 80),
       });
-      factsAdded++;
+      continue;
     }
+    addFact({
+      userId,
+      personId: person?.id ?? null,
+      attribute: f.attribute,
+      value: f.value,
+      sourceMemoryId: memory.id,
+    });
+    factsAdded++;
   }
 
   // 5. Store commitments / follow-ups (drive the Today feed).
@@ -352,7 +366,7 @@ function buildCaptureSummary(
 }
 
 /**
- * Recall: Walrus semantic shortlist → Jev calibrated ranking → Bedrock
+ * Dejavu: Walrus semantic shortlist → Jev calibrated ranking → Bedrock
  * synthesis → Jev citation verification.
  *
  * Fast search (Walrus) finds candidates; a Noul per pair ranks them with

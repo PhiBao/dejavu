@@ -1,4 +1,4 @@
-/** Shared domain types for Recall. */
+/** Shared domain types for Dejavu. */
 
 export type MemoryKind = "note" | "meeting" | "message" | "call";
 export type CommitmentStatus = "open" | "done" | "snoozed" | "dismissed";
@@ -37,7 +37,8 @@ export interface Memory {
 export interface Fact {
   id: string;
   user_id: string;
-  person_id: string;
+  /** Null for facts extracted from a general note (no person involved). */
+  person_id: string | null;
   attribute: string;
   value: string;
   source_memory_id: string | null;

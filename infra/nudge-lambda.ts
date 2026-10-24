@@ -1,5 +1,5 @@
 /**
- * AWS Lambda handler for Recall's daily nudge cron.
+ * AWS Lambda handler for Dejavu's daily nudge cron.
  *
  * Runs the same stale-relationship reconnect logic as `scripts/run-nudges.ts`,
  * but serverless: triggered by an EventBridge (CloudWatch Events) schedule rule
@@ -8,7 +8,7 @@
  *
  * Deploy:
  *   1. Bundle this handler with the repo's lib/ (it needs the projection
- *      store; point RECALL_DATA_PATH at shared storage, e.g. EFS, or accept
+ *      store; point DEJAVU_DATA_PATH at shared storage, e.g. EFS, or accept
  *      that the projection is rebuilt from Walrus via restore).
  *   2. Create a Lambda with handler `nudge-lambda.handler`.
  *   3. Set env: MEMWAL_* (for Walrus writes), NODE_ENV=production.

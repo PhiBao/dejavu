@@ -16,7 +16,7 @@ import { MemWal } from "@mysten-incubation/memwal";
 import { env } from "../lib/env";
 import { countWalrusBlobs } from "../lib/store";
 
-const PROBE_TEXT = `Recall verification probe ${new Date().toISOString()}: the demo user met Sarah Chen, founder at Nimbus, hiring senior React engineers.`;
+const PROBE_TEXT = `Dejavu verification probe ${new Date().toISOString()}: the demo user met Sarah Chen, founder at Nimbus, hiring senior React engineers.`;
 
 async function main() {
   const e = env();

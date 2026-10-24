@@ -3,7 +3,7 @@ import { env } from "./env";
 import { log } from "./log";
 
 /**
- * Calibrated judgments (TypeSafe Jev) — every *decision* in Recall's pipeline.
+ * Calibrated judgments (TypeSafe Jev) — every *decision* in Dejavu's pipeline.
  *
  * Thesis: a generative LLM is good at writing words and bad at being
  * accountable for choices. So Jev decides and Voxtral only writes:
@@ -189,24 +189,37 @@ function isCandidateToken(token: string): boolean {
  * pattern: the model selects, code copies verbatim).
  */
 export function findPersonSpans(text: string): string[] {
+  const { strong, weak } = collectSpans(text);
+  const seen = new Set(strong.map((s) => s.toLowerCase()));
+  return [...strong, ...weak.filter((w) => !seen.has(w.toLowerCase()))];
+}
+
+/**
+ * High-precision spans only (interaction verb, honorific, or a person
+ * predicate like "X runs/leads/is"). Used by the no-judge fallback, where
+ * there is no model to reject a place name or a sentence-initial verb.
+ */
+export function findStrongPersonSpans(text: string): string[] {
+  return collectSpans(text).strong;
+}
+
+function collectSpans(text: string): { strong: string[]; weak: string[] } {
   const seen = new Set<string>();
-  const out: string[] = [];
-  const push = (raw: string | undefined) => {
+  const strong: string[] = [];
+  const weak: string[] = [];
+  const push = (raw: string | undefined, tier: "strong" | "weak") => {
     let span = (raw ?? "").replace(/\s+/g, " ").trim().replace(/^[-–—,:;.!?]+\s*/, "");
-    // Strip a leading honorific out of the span but remember it for context.
     if (!span) return;
-    const key = span.toLowerCase();
-    if (seen.has(key)) return;
     const words = span.split(" ").filter(Boolean);
     // Drop stopwords from the FRONT only ("up w/ Dr. Lena" -> "Dr. Lena Ortiz").
     while (words.length > 1 && !isCandidateToken(words[0] as string)) words.shift();
     if (words.length === 0) return;
     span = words.join(" ");
     if (!isCandidateToken(span)) return;
-    const finalKey = span.toLowerCase();
-    if (seen.has(finalKey)) return;
-    seen.add(finalKey);
-    out.push(span);
+    const key = span.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    (tier === "strong" ? strong : weak).push(span);
   };
 
   // 1. Interaction verbs (informal variants included — "met up w/", "saw").
@@ -214,11 +227,11 @@ export function findPersonSpans(text: string): string[] {
     `\\b(?:${INTERACTION_VERBS})\\s+(?:up\\s+with\\s+|out\\s+with\\s+|w/\\s*)?((?:${HONORIFIC})?${NAME_CORE})`,
     "g",
   );
-  for (const m of text.matchAll(verbRe)) push(m[1]);
+  for (const m of text.matchAll(verbRe)) push(m[1], "strong");
 
   // 2. Honorific is a strong signal even without a verb: "Dr. Lena Ortiz called".
   const honorificRe = new RegExp(`(${HONORIFIC}${NAME_CORE})`, "g");
-  for (const m of text.matchAll(honorificRe)) push(m[1]);
+  for (const m of text.matchAll(honorificRe)) push(m[1], "strong");
 
   // 3. "X is / works / runs / said / …" subjects (up to two tokens so that
   //    "Tomás Silva runs" yields "Tomás Silva", not just "Silva").
@@ -226,18 +239,18 @@ export function findPersonSpans(text: string): string[] {
     `\\b((?:${HONORIFIC})?[A-ZÀ-Ý][a-zà-ÿ]+(?:\\s+[A-ZÀ-Ý][a-zà-ÿ]+)?)\\s+(?:is|was|works?|said|mentioned|runs?|leads?|founded|started|joined|left|owns?|builds?|wants?|prefers?|hiring|needs?)`,
     "g",
   );
-  for (const m of text.matchAll(subjRe)) push(m[1]);
+  for (const m of text.matchAll(subjRe)) push(m[1], "strong");
 
-  // 4. Recall net: ANY capitalized token or capitalized run (1-3 tokens).
+  // 4. Dejavu net: ANY capitalized token or capitalized run (1-3 tokens).
   //    Sentence-initial single tokens are kept too — Jev decides; over-finding
   //    is cheap, and "Priya today - she's hiring" starts with a name.
   const runRe = new RegExp(
     `[A-ZÀ-Ý][a-zà-ÿ]+(?:\\s+(?:van|von|de|del|da|di|bin|al)?\\s*[A-ZÀ-Ý][a-zà-ÿ]+){0,2}`,
     "g",
   );
-  for (const m of text.matchAll(runRe)) push(m[0]);
+  for (const m of text.matchAll(runRe)) push(m[0], "weak");
 
-  return out;
+  return { strong, weak };
 }
 
 /**

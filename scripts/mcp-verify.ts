@@ -1,18 +1,18 @@
 /**
- * Verify Recall's own MCP server with your own key.
+ * Verify Dejavu's own MCP server with your own key.
  *
- * A signed-in user generates an API key in the app (recu_...), which scopes
+ * A signed-in user generates an API key in the app (djav_...), which scopes
  * the MCP tools to THEIR Walrus-backed memory.
- *   export RECALL_MCP_API_KEY="<your-recall-key>"
+ *   export DEJAVU_MCP_API_KEY="<your-recall-key>"
  *   pnpm exec tsx scripts/mcp-verify.ts
  *
  * You can also run a semantic search after verifying:
- *   RECALL_MCP_QUERY="who is hiring react engineers" pnpm exec tsx scripts/mcp-verify.ts
+ *   DEJAVU_MCP_QUERY="who is hiring react engineers" pnpm exec tsx scripts/mcp-verify.ts
  */
 import { loadEnv } from "./load-env";
 loadEnv();
 
-const token = process.env.RECALL_MCP_API_KEY ?? "";
+const token = process.env.DEJAVU_MCP_API_KEY ?? "";
 const ENDPOINT = `${process.env.APP_URL ?? "http://localhost:3000"}/api/mcp`;
 
 async function mcpFetch(
@@ -56,7 +56,7 @@ async function mcpFetch(
 async function main() {
   if (!token) {
     console.error(
-      '[mcp] Provide a key to verify.\n  export RECALL_MCP_API_KEY="<your-recall-key>" (generate one in the app)',
+      '[mcp] Provide a key to verify.\n  export DEJAVU_MCP_API_KEY="<your-recall-key>" (generate one in the app)',
     );
     process.exit(1);
   }
@@ -73,7 +73,7 @@ async function main() {
       params: {
         protocolVersion: "2025-03-26",
         capabilities: {},
-        clientInfo: { name: "recall-mcp-verify", version: "2.0.0" },
+        clientInfo: { name: "dejavu-mcp-verify", version: "2.0.0" },
       },
     },
     token,
@@ -94,7 +94,7 @@ async function main() {
   for (const t of tools) console.log("   -", t.name);
 
   // 4. optional semantic search over the user's Walrus memory
-  const query = process.env.RECALL_MCP_QUERY;
+  const query = process.env.DEJAVU_MCP_QUERY;
   if (query) {
     console.log(`[mcp] search_memories: ${query}`);
     ({ sessionId, result } = await mcpFetch(

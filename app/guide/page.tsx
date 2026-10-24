@@ -5,7 +5,7 @@ import { ConnectGuide } from "@/components/ConnectGuide";
 
 /**
  * Plain-language guide for connecting your AI agent (Claude Code, Cursor,
- * VS Code...) to YOUR memory through Recall's MCP server.
+ * VS Code...) to YOUR memory through Dejavu's MCP server.
  *
  * Anyone can read this page. If signed in, it shows your existing keys so the
  * copy-paste commands are ready to go.

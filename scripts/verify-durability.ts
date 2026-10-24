@@ -6,7 +6,7 @@
  *      discoverable per namespace (not just in some app database).
  *   2. INDEX RECOVERY — the relayer's search index can be rebuilt from Walrus
  *      alone via restore(), so recall survives a total index loss.
- *   3. APP-INDEX LOSS — delete Recall's local projection entirely and semantic
+ *   3. APP-INDEX LOSS — delete Dejavu's local projection entirely and semantic
  *      recall STILL answers, because the memories were never in the app.
  *
  * Usage: pnpm memwal:durability [userId]
@@ -98,9 +98,9 @@ async function main() {
   if (!victim) {
     console.log("  (skipped — no seeded user)");
   } else {
-    const saved = process.env.RECALL_DATA_PATH;
+    const saved = process.env.DEJAVU_DATA_PATH;
     const emptyPath = join(tmpdir(), `recall-empty-${randomUUID().slice(0, 8)}.json`);
-    process.env.RECALL_DATA_PATH = emptyPath;
+    process.env.DEJAVU_DATA_PATH = emptyPath;
     // Recreate the client so the store layer picks up the new path.
     const { __clearMemwalClient } = await import("../lib/memwal");
     __clearMemwalClient();
@@ -122,7 +122,7 @@ async function main() {
     if (hits[0]) {
       console.log(`         top hit: d=${hits[0].distance.toFixed(3)} ${hits[0].text.slice(0, 88)}…`);
     }
-    process.env.RECALL_DATA_PATH = saved;
+    process.env.DEJAVU_DATA_PATH = saved;
     __clearMemwalClient();
     try {
       rmSync(emptyPath, { force: true });

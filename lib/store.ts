@@ -21,7 +21,7 @@ import type { ApiKey } from "./api-keys";
  * typed facts, commitments with due dates, users, API keys, audit log.
  *
  * Persistence is a single JSON file (defaults to ./data/recall.json,
- * overridable via RECALL_DATA_PATH). That keeps the app dependency-free and
+ * overridable via DEJAVU_DATA_PATH). That keeps the app dependency-free and
  * one-command runnable — the right trade for a hackathon entry where Walrus
  * carries durability and this file carries structure. All functions are
  * synchronous; callers may still `await` them.
@@ -71,9 +71,13 @@ function emptyStore(): StoreData {
 }
 
 function dataPath(): string {
-  const override = process.env.RECALL_DATA_PATH;
+  const override = process.env.DEJAVU_DATA_PATH ?? process.env.RECALL_DATA_PATH;
   if (override && override.length > 0) return override;
-  return join(process.cwd(), "data", "recall.json");
+  // Prefer the new name for fresh installs, but keep reading the legacy file
+  // so a rebrand never looks like data loss on an existing deployment.
+  const next = join(process.cwd(), "data", "dejavu.json");
+  const legacy = join(process.cwd(), "data", "recall.json");
+  return existsSync(next) || !existsSync(legacy) ? next : legacy;
 }
 
 // NOTE: no in-memory cache, by design. Next.js may bundle this module into
@@ -296,7 +300,7 @@ export function recordMemoryHit(memoryId: string): void {
   saveStore(store);
 }
 
-/** Recall counts per memory id (missing = never recalled). */
+/** Dejavu counts per memory id (missing = never recalled). */
 export function memoryUsageMap(userId: string): Map<string, MemoryUsage> {
   const store = loadStore();
   const ids = new Set(
@@ -313,7 +317,7 @@ export function memoryUsageMap(userId: string): Map<string, MemoryUsage> {
 
 export function addFact(args: {
   userId: string;
-  personId: string;
+  personId: string | null;
   attribute: string;
   value: string;
   sourceMemoryId: string | null;
@@ -337,6 +341,20 @@ export function getPersonFacts(userId: string, personId: string): Fact[] {
   return loadStore()
     .facts.filter((f) => f.user_id === userId && f.person_id === personId)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+/** Facts derived from one note — works for note-level and person-level facts. */
+export function getMemoryFacts(userId: string, memoryIds: string[]): Map<string, Fact[]> {
+  const wanted = new Set(memoryIds);
+  const out = new Map<string, Fact[]>();
+  for (const f of loadStore().facts) {
+    if (f.user_id !== userId || !f.source_memory_id) continue;
+    if (!wanted.has(f.source_memory_id)) continue;
+    const list = out.get(f.source_memory_id) ?? [];
+    list.push(f);
+    out.set(f.source_memory_id, list);
+  }
+  return out;
 }
 
 // --- Commitments ---------------------------------------------------------

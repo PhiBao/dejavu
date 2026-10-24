@@ -22,7 +22,7 @@ const schema = z.object({
   //   primary  = LLM_PROVIDER=openai-compatible (any OpenAI-compatible API)
   //   fallback = Bedrock Mantle (BEDROCK_API_KEY)
   //   last     = LLM_FALLBACK_* (a second OpenAI-compatible provider)
-  // With none configured, Recall falls back to deterministic local writing.
+  // With none configured, Dejavu falls back to deterministic local writing.
   LLM_PROVIDER: z.enum(["openai-compatible", "bedrock"]).default("bedrock"),
   LLM_PROVIDER_NAME: z.string().optional(),
   LLM_BASE_URL: z.string().default("https://openrouter.ai/api/v1"),
@@ -74,7 +74,7 @@ const schema = z.object({
 
   // Local projection store (people, facts, commitments, users). Overridable
   // for tests; defaults to ./data/recall.json.
-  RECALL_DATA_PATH: z.string().optional(),
+  DEJAVU_DATA_PATH: z.string().optional(),
 
   APP_URL: z.string().default("http://localhost:3000"),
   NODE_ENV: z
@@ -88,7 +88,13 @@ let cached: Env | null = null;
 
 export function env(): Env {
   if (cached) return cached;
-  const parsed = schema.safeParse(process.env);
+  // Backwards compatibility: pre-rename deployments used RECALL_* env names.
+  // Read them as defaults so a rebrand never breaks a running deployment.
+  const legacy = { ...process.env } as NodeJS.ProcessEnv;
+  if (!legacy.DEJAVU_DATA_PATH && legacy.RECALL_DATA_PATH) legacy.DEJAVU_DATA_PATH = legacy.RECALL_DATA_PATH;
+  if (!legacy.DEJAVU_AWS_ACCESS_KEY_ID && legacy.RECALL_AWS_ACCESS_KEY_ID) legacy.DEJAVU_AWS_ACCESS_KEY_ID = legacy.RECALL_AWS_ACCESS_KEY_ID;
+  if (!legacy.DEJAVU_AWS_SECRET_ACCESS_KEY && legacy.RECALL_AWS_SECRET_ACCESS_KEY) legacy.DEJAVU_AWS_SECRET_ACCESS_KEY = legacy.RECALL_AWS_SECRET_ACCESS_KEY;
+  const parsed = schema.safeParse(legacy);
   if (!parsed.success) {
     const issues = parsed.error.issues
       .map((i) => `  - ${i.path.join(".")}: ${i.message}`)

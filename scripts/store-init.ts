@@ -1,5 +1,5 @@
 /**
- * Initializes Recall's local projection store (people, facts, commitments).
+ * Initializes Dejavu's local projection store (people, facts, commitments).
  *
  * Usage: pnpm store:init
  *

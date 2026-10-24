@@ -9,9 +9,9 @@ import {
 } from "./store";
 
 /**
- * Per-user API keys for Recall's MCP server.
+ * Per-user API keys for Dejavu's MCP server.
  *
- * A signed-in user generates a key (`recu_<random>`); we store only its
+ * A signed-in user generates a key (`djav_<random>`); we store only its
  * SHA-256 hash and a short display prefix. The raw key is shown exactly once,
  * at creation. Authentication (via Bearer token) looks up the hash — so even a
  * store leak exposes no usable keys.
@@ -27,7 +27,7 @@ export interface ApiKey {
   revoked_at: string | null;
 }
 
-const PREFIX = "recu_";
+const PREFIX = "djav_";
 
 function sha256(raw: string): string {
   return createHash("sha256").update(raw).digest("hex");

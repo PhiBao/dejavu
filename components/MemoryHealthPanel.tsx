@@ -3,7 +3,7 @@ import { computeMemoryHealth, type MemoryHealth } from "@/lib/health";
 /**
  * Memory Health panel — the visible half of the learning loop.
  *
- * Shows what Recall has learned about which of your memories matter (recall
+ * Shows what Dejavu has learned about which of your memories matter (recall
  * frequency, recency, whether they are tied to a person or an obligation you
  * owe) and what the chain says about their storage window.
  */

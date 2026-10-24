@@ -28,7 +28,7 @@ interface Entry {
 /**
  * The single core interaction: one text box, two intents.
  *  - "Remember" captures a memory.
- *  - "Recall" asks a question and shows a cited answer.
+ *  - "Recall" (the action) asks a question and shows a cited answer.
  * Results render as a lightweight conversation thread.
  */
 export function Composer({ hasPeople }: { hasPeople: boolean }) {
@@ -130,9 +130,9 @@ export function Composer({ hasPeople }: { hasPeople: boolean }) {
 
   const placeholder =
     mode === "capture"
-      ? "e.g. Met Sarah Chen at the AI meetup — she's a founder at Nimbus hiring React engineers. Promised to intro her to Alex."
+      ? "e.g. Met Sarah Chen at the AI meetup — founder at Nimbus, hiring React engineers. Or: my passport expires in March, renew it."
       : hasPeople
-        ? "e.g. Who did I meet that's hiring React engineers?"
+        ? "e.g. Who was hiring React engineers? What did I promise Marcus?"
         : "Capture a memory first, then ask me anything about it.";
 
   return (

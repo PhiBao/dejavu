@@ -1,8 +1,8 @@
 {
-  "name": "recall",
+  "name": "dejavu",
   "version": "0.1.0",
   "private": true,
-  "description": "Recall — a relationship memory agent with portable, verifiable memory on Walrus Memory + AWS Bedrock.",
+  "description": "Dejavu \u2014 a memory companion for everything worth remembering, with portable, verifiable memory on Walrus.",
   "license": "MIT",
   "type": "module",
   "scripts": {

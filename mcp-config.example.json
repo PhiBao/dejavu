@@ -1,9 +1,11 @@
 {
   "mcpServers": {
-    "recall": {
+    "dejavu": {
       "type": "http",
       "url": "http://localhost:3000/api/mcp",
-      "headers": { "Authorization": "Bearer recu_PASTE_YOUR_KEY_HERE" }
+      "headers": {
+        "Authorization": "Bearer djav_PASTE_YOUR_KEY_HERE"
+      }
     }
   }
 }

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { env, isMockAI } from "./env";
-import { findPersonSpans } from "./judge";
+import { findStrongPersonSpans } from "./judge";
 import { log } from "./log";
 import type { ExtractedMemory, MemoryKind } from "./types";
 
@@ -249,24 +249,24 @@ function safeParseArray(raw: string): unknown {
   }
 }
 
-const EXTRACT_SYSTEM = `You extract structured relationship memory from a user's note about a person they met or interacted with.
+const EXTRACT_SYSTEM = `You extract structured memory from anything a user wants to remember: a person they met, a meeting, an idea, a decision, a purchase, a plan, a fact about their own life — or a mix.
 Return ONLY a JSON object with this exact shape:
 {
-  "personName": string | null,       // the OTHER person's name (not the user)
+  "personName": string | null,       // the OTHER person's name, when the note is about someone specific
   "headline": string | null,         // short role/summary e.g. "Founder @ Acme, ex-Stripe"
   "company": string | null,
   "location": string | null,
   "kind": "note" | "meeting" | "message" | "call",
-  "facts": [ { "attribute": string, "value": string } ],   // durable facts: role, interests, family, preferences, hiring needs, etc.
-  "commitments": [ { "description": string, "dueInDays": number | null } ]  // follow-ups the USER should do; dueInDays = when, or null
+  "facts": [ { "attribute": string, "value": string } ],   // durable details worth recalling later
+  "commitments": [ { "description": string, "dueInDays": number | null } ]  // things the USER should do; dueInDays = when, or null
 }
 Rules:
 - Extract only what is stated or clearly implied. Do NOT invent facts.
+- personName is null when the note is not about a specific person. That is normal: facts still belong to the note.
 - headline MUST be the person's current role/title exactly as stated in the note (e.g. if the note says "runs growth", the headline is about growth — never upgrade it to "Founder", "CEO", or any title not in the text).
 - company MUST be just the organization name (e.g. "MIT", not "MIT working on retrieval systems").
 - Every word in headline/company/fact values should appear in (or be a direct shortening of) the note text.
-- attributes should be short snake_case keys (e.g. "role", "interest", "hiring_for", "kid_name").
-- If no person is identifiable, personName is null.
+- attributes should be short, GENERIC snake_case keys (e.g. "role", "interest", "hiring_for", "deadline", "amount", "trip_month") — never invented proper nouns from the note.
 - Output JSON only, no prose.`;
 
 // --- Public API -----------------------------------------------------------
@@ -382,9 +382,9 @@ function mockExtract(text: string): ExtractedMemory {
   // pre-parser Jev sees (lib/judge.ts). Previously this used its own narrow
   // regex, so the no-credentials fallback dropped people the production path
   // keeps — the two paths must agree.
-  const spans = findPersonSpans(text);
-  // Longest span is the best guess offline (full names beat surnames). In
-  // production Jev makes this call; this is the no-credentials fallback.
+  const spans = findStrongPersonSpans(text);
+  // Longest strong span is the best guess offline (full names beat surnames).
+  // In production Jev makes this call; this is the no-credentials fallback.
   const personName =
     spans.length > 0
       ? spans.reduce((a, b) => (b.length > a.length ? b : a))
