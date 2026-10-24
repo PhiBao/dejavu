@@ -118,7 +118,7 @@ export async function computeMemoryHealth(
       .map((c) => c.source_memory_id as string),
   );
 
-  // Onchain storage windows (Tatum Sui RPC). Null when unavailable.
+  // Onchain storage windows (Tatum Sui gRPC). Null when unavailable.
   let epoch: number | null = null;
   let blobs: Map<string, BlobOnchain> = new Map();
   const account = await getMemWalAccount();

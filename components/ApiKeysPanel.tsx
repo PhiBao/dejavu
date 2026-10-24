@@ -16,7 +16,7 @@ export function ApiKeysPanel({ keys }: { keys: ApiKey[] }) {
   const mcpUrl =
     typeof window !== "undefined" && window.location.hostname !== "localhost"
       ? `${window.location.origin}/api/mcp`
-      : "https://recall-walrus-memory.fly.dev/api/mcp";
+      : "https://dejavu-memory.fly.dev/api/mcp";
 
   function generate() {
     startTransition(async () => {

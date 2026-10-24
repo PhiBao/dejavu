@@ -35,7 +35,7 @@ export default async function AppPage() {
     recent.map((m) => m.id),
   );
 
-  // Independent onchain proof of this user's memories (Tatum Sui RPC).
+  // Independent onchain proof of this user's memories (Tatum Sui gRPC).
   // Cached inside lib/tatum, so this is cheap on repeat renders.
   let onchain = null;
   if (isTatumConfigured()) {

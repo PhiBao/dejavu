@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 
-const LIVE_URL = "https://recall-walrus-memory.fly.dev";
+const LIVE_URL = "https://dejavu-memory.fly.dev";
 
 type ToolKey = "claude" | "cursor" | "vscode";
 

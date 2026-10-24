@@ -8,7 +8,7 @@ memories it saved — with citations, verified against their sources.
 
 Built for **Walrus × Tatum: Total Recall** (Track: *Smart Agents for Real Life*).
 
-> **Live app:** https://recall-walrus-memory.fly.dev
+> **Live app:** https://dejavu-memory.fly.dev
 > **Proof:** `GET /api/health` · **Code:** this repo, MIT
 
 ---
@@ -56,7 +56,7 @@ forgetting costs the most); the product is deliberately not limited to them.
 
 Three things became cheap at the same time: capable open-weight models
 (Qwen via Token Factory), semantic memory as infrastructure (Walrus Memory),
-and independent onchain reads (Tatum RPC). A solo builder can now ship a
+and independent onchain reads (Tatum gRPC). A solo builder can now ship a
 memory product whose durability is **verifiable by a third party** instead of
 promised in a privacy policy.
 
@@ -96,7 +96,7 @@ app and starts feeling like memory.
 | **Dejavu** | Semantic search over your namespace → calibrated ranking → grounded synthesis → citation verification. Abstains when nothing is relevant. |
 | **Today** | Due/overdue follow-ups with a pre-drafted message. Done / Snooze / Dismiss. |
 | **Memory Health** | What Dejavu learned about which memories you actually rely on, and what the chain says about their storage window. |
-| **Verified onchain** | Independent Tatum Sui RPC check: blob objects, agent delegation, Walrus epoch, real expiry. |
+| **Verified onchain** | Independent Tatum Sui gRPC check: blob objects, agent delegation, Walrus epoch, real expiry. |
 | **MCP** | Any agent can read your memory — via Dejavu's scoped server, or Walrus Memory's native tools. |
 
 ### Differentiation
@@ -107,7 +107,7 @@ app and starts feeling like memory.
 | Answers questions | ✗ | partial | ✓ | **✓ cited** |
 | Structure extracted | ✗ | ✓ (manual) | ✗ | **✓ automatic** |
 | Memory portable across apps | ✗ | ✗ | ✗ | **✓ Walrus blobs** |
-| Independent proof it exists | ✗ | ✗ | ✗ | **✓ Sui RPC via Tatum** |
+| Independent proof it exists | ✗ | ✗ | ✗ | **✓ Sui gRPC via Tatum** |
 | Proactive follow-up | ✗ | partial | ✗ | **✓ Today feed** |
 
 ---
@@ -129,14 +129,14 @@ app and starts feeling like memory.
    tie-break, and pairs it with onchain expiry to say *which memories are worth
    renewing first*.
 4. **Memory verified by a second provider.** Walrus Memory says the blob exists;
-   Tatum's Sui RPC proves it — the `Blob` object, its certification epoch, its
+   Tatum's Sui gRPC proves it — the `Blob` object, its certification epoch, its
    storage window, and that our delegate key is registered on the account.
 
 ### What technology enables it
 
 - **Walrus Memory** — encrypted, content-addressed blobs with semantic recall
   and per-user namespaces. Without it, portability would be a migration script.
-- **Tatum Sui RPC** — independent reads of Walrus system state, the MemWal
+- **Tatum Sui gRPC** — independent reads of Walrus system state, the MemWal
   account, and every `Blob` object. Without it, durability would be a claim.
 - **TypeSafe Jev** — calibrated, typed judgments (choice / score / noul) for
   identity, relevance, and citation verdicts. Without it, "confidence" would be
@@ -168,7 +168,7 @@ the session, the app, and the model.
 | Sponsor tech | Where it does real work |
 |---|---|
 | **Walrus Memory** | Every capture is one encrypted blob in a per-user namespace on **mainnet**. Dejavu searches it semantically, cites blob ids, and can rebuild its index from Walrus alone (`restore()`). Agents read the same blobs via Walrus Memory's native MCP. |
-| **Tatum Sui RPC** | Reads the Walrus system state (epoch, capacity, prices), the MemWalAccount (owner, active flag, delegate keys — verifying our agent's key is registered onchain), and every Walrus `Blob` object (certification epoch, storage window, size). This is the product's independent proof layer and the source of the expiry shown in the UI. |
+| **Tatum Sui gRPC** | Reads the Walrus system state (epoch, capacity, prices), the MemWalAccount (owner, active flag, delegate keys — verifying our agent's key is registered onchain), and every Walrus `Blob` object (certification epoch, storage window, size). This is the product's independent proof layer and the source of the expiry shown in the UI. |
 
 Not decorative: if Tatum is unavailable, the app says so and keeps working; if
 Walrus is unavailable, capture is preserved locally and the UI says the write
@@ -204,7 +204,7 @@ flowchart TB
 
     subgraph sponsors["Sponsor infrastructure"]
         WALRUS[("Walrus Memory<br/>encrypted blobs · mainnet")]
-        TATUM["Tatum Sui RPC<br/>system · account · blobs"]
+        TATUM["Tatum Sui gRPC<br/>system · account · blobs"]
     end
 
     WRITER["Prose writer<br/>Qwen via Token Factory"]
@@ -233,7 +233,7 @@ sequenceDiagram
     participant A as Dejavu
     participant J as Jev (decisions)
     participant W as Walrus Memory
-    participant T as Tatum RPC
+    participant T as Tatum gRPC
     participant L as Writer (Qwen)
 
     U->>A: "Met Sarah Chen, hiring React engineers"
@@ -282,7 +282,7 @@ flowchart LR
 |---|---|
 | `lib/memory.ts` | Domain pipeline: `captureMemory()` and `recall()` — grounding, ranking, synthesis, verification. |
 | `lib/memwal.ts` | Walrus Memory client, per-user namespaces, blob URLs, durability helpers. |
-| `lib/tatum.ts` | Sui RPC: Walrus system state, MemWal account + delegate check, blob index, expiry math, credit budget. |
+| `lib/tatum.ts` | Sui gRPC: Walrus system state, MemWal account + delegate check, blob index, expiry math, credit budget. |
 | `lib/judge.ts` | Calibrated judgments: intent routing, person resolution, relevance, citation verification. |
 | `lib/ai.ts` | Prose writer with provider chain and attribution; extraction schema. |
 | `lib/health.ts` | Learning loop: usage → explainable importance → ranking boost + renewal priority. |
@@ -320,7 +320,7 @@ flowchart LR
 | Service | Role | Failure behavior |
 |---|---|---|
 | Walrus Memory (mainnet) | Durable encrypted memory | Capture saved locally, write queued; recall falls back to the local projection |
-| Tatum Sui RPC | Independent verification, expiry | Panel reports "unavailable"; app keeps working on the relayer's word |
+| Tatum Sui gRPC | Independent verification, expiry | Panel reports "unavailable"; app keeps working on the relayer's word |
 | Nebius Token Factory (Qwen) | Prose writer | Falls through the provider chain; UI shows the writer that answered |
 | TypeSafe Jev | Decisions | Falls back to generative ranking / writer's proposal |
 | Fly.io | Hosting + persistent volume | Single instance; volume holds the projection |
@@ -354,8 +354,8 @@ pnpm dev               # http://localhost:3000
 | `MEMWAL_PRIVATE_KEY` | yes | Walrus Memory delegate key (server-only) |
 | `MEMWAL_ACCOUNT_ID` | yes | MemWalAccount object id on Sui |
 | `MEMWAL_SERVER_URL` | no | Relayer URL (defaults to mainnet) |
-| `TATUM_API_KEY` | recommended | Onchain verification via Sui RPC |
-| `TATUM_SUI_RPC_URL` | no | Defaults to `https://sui-mainnet.gateway.tatum.io` |
+| `TATUM_API_KEY` | recommended | Onchain verification via Sui gRPC |
+| `TATUM_SUI_GRPC_URL` | no | Defaults to `https://sui-mainnet-grpc.gateway.tatum.io` |
 | `TOKENFACTORY_API_KEY` | recommended | Primary prose writer (Qwen) |
 | `TOKENFACTORY_MODEL` | no | Defaults to `Qwen/Qwen3-30B-A3B-Instruct-2507` |
 | `TYPESAFE_API_KEY` | recommended | Calibrated judgments |
@@ -401,7 +401,7 @@ fly deploy --ha=false    # Fly.io: 256MB machine + 1GB volume
 
 ### Deployed application
 
-**https://recall-walrus-memory.fly.dev**
+**https://dejavu-memory.fly.dev**
 
 ### Required setup
 
@@ -534,7 +534,7 @@ The product is **Dejavu**. Two identifiers keep the original name on purpose:
 
 - **Walrus namespace prefix `recall-<userId>`** — renaming it would orphan every
   blob already written to mainnet, because recall is scoped by exact namespace.
-- **Fly hostname `recall-walrus-memory.fly.dev`** — changing it would break the
+- **Fly hostname `dejavu-memory.fly.dev`** — changing it would break the
   submitted demo URL.
 
 Both are implementation details; the product, UI, MCP server, API keys and docs

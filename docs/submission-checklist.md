@@ -17,7 +17,7 @@ Submit: <https://recall-tatum-walrus.vercel.app>
 - [ ] **Published blog post** — what it does, how it uses Tatum + Walrus, how it
       learned over time.
 - [ ] **Working demo + public repo.**
-      Live: <https://recall-walrus-memory.fly.dev> · Repo: this one.
+      Live: <https://dejavu-memory.fly.dev> · Repo: this one.
 - [ ] **Short demo video (2–3 min)** for the submission form.
 - [ ] Optional: **Tatum AI Builder** app — skipped deliberately: one submission
       per person, and the prize requires a product built *primarily* with
@@ -79,5 +79,5 @@ tools and sessions.
 pnpm verify             # typecheck + tests + e2e + durability
 pnpm tatum:verify       # onchain: system, delegation, blobs, expiry
 pnpm memwal:verify      # Walrus round-trip
-curl https://recall-walrus-memory.fly.dev/api/health
+curl https://dejavu-memory.fly.dev/api/health
 ```

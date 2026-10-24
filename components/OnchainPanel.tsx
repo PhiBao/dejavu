@@ -55,7 +55,7 @@ export function OnchainPanel({ data }: { data: OnchainPanelData | null }) {
           Verified onchain
         </h2>
         <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
-          Tatum RPC
+          Tatum gRPC
         </span>
       </div>
 

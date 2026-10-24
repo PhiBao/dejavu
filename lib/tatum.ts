@@ -1,8 +1,11 @@
+import { SuiGrpcClient } from "@mysten/sui/grpc";
+import { GrpcTransport } from "@protobuf-ts/grpc-transport";
+import { ChannelCredentials } from "@grpc/grpc-js";
 import { env } from "./env";
 import { log } from "./log";
 
 /**
- * Tatum Sui RPC — independent onchain verification for Dejavu's memory layer.
+ * Tatum Sui gRPC — independent onchain verification for Dejavu's memory layer.
  *
  * Why this exists: Walrus Memory's relayer is trustworthy, but "trust me" is
  * not proof. Everything Dejavu claims about persistence can be checked
@@ -14,33 +17,30 @@ import { log } from "./log";
  *   3. BLOB OBJECTS   — every memory's Walrus `Blob` object: certification
  *      epoch, storage window (start → end), size, deletability, object id.
  *
- * That turns three product claims into verifiable facts:
- *   "stored on Walrus"      → the Blob object exists onchain
- *   "the agent is allowed"  → its public key is in MemWalAccount.delegate_keys
- *   "memory won't vanish"   → the storage end_epoch, converted to a real date
+ * Transport note: Sui deprecated JSON-RPC, and Tatum serves Sui over **native
+ * gRPC** only. This module therefore talks gRPC (HTTP/2) with the API key in
+ * call metadata — not JSON-RPC over fetch.
  *
  * Degrades gracefully: with no TATUM_API_KEY (or on RPC failure) every helper
  * returns null and the app keeps working on the relayer's word alone.
  */
 
-const MAINNET_RPC = "https://sui-mainnet.gateway.tatum.io";
+const MAINNET_GRPC = "https://sui-mainnet-grpc.gateway.tatum.io";
 const MAINNET_WALRUS_SYSTEM =
   "0x2134d52768ea07e8c43570ef975eb3e4c27a39fa6396bef985b5abc58d03ddd2";
 /** Walrus mainnet epochs are 2 weeks; the chain doesn't expose the constant. */
 export const EPOCH_DAYS = 14;
-const BLOB_TYPE_SUFFIX = "::blob::Blob";
 
-const CALL_TIMEOUT_MS = 15_000;
 /**
- * Free plan: 3 RPS, shared across the plan ("strategy=shared"), so bursts can
- * 429 even under the nominal limit. Pace at ~2 RPS and back off on 429.
+ * Free plan: 3 RPS, shared across the plan, so bursts can 429 even under the
+ * nominal limit. Pace at ~2 RPS and keep a hard hourly request budget.
  */
 const MIN_REQUEST_SPACING_MS = 500;
-const MAX_ATTEMPTS = 4;
+const CREDIT_BUDGET_PER_HOUR = 120;
 
 export interface TatumConfig {
   apiKey: string;
-  rpcUrl: string;
+  grpcUrl: string;
   systemObjectId: string;
   accountId: string;
 }
@@ -51,7 +51,7 @@ export function tatumConfig(): TatumConfig | null {
     if (!e.TATUM_API_KEY) return null;
     return {
       apiKey: e.TATUM_API_KEY,
-      rpcUrl: e.TATUM_SUI_RPC_URL,
+      grpcUrl: e.TATUM_SUI_GRPC_URL,
       systemObjectId: e.TATUM_WALRUS_SYSTEM_OBJECT_ID,
       accountId: e.MEMWAL_ACCOUNT_ID ?? "",
     };
@@ -65,30 +65,70 @@ export function isTatumConfigured(): boolean {
   return !!c?.apiKey;
 }
 
-// --- JSON-RPC ---------------------------------------------------------------
+// --- gRPC client ------------------------------------------------------------
 
-interface RpcEnvelope<T> {
-  jsonrpc: "2.0";
-  id: number;
-  result?: T;
-  error?: { code: number; message: string };
+let client: SuiGrpcClient | null = null;
+
+/** Turn https://host/path into the host:port that grpc-js expects. */
+function grpcHost(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.port ? `${u.hostname}:${u.port}` : `${u.hostname}:443`;
+  } catch {
+    return url.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  }
 }
 
-/**
- * One paced queue for EVERY Tatum request (single and batch). The free plan is
- * 3 RPS and *shared* across the plan, so unqueued bursts are the fastest way
- * to a 429 that silently degrades the product.
- */
+function getClient(): SuiGrpcClient | null {
+  const cfg = tatumConfig();
+  if (!cfg) return null;
+  if (client) return client;
+  try {
+    const transport = new GrpcTransport({
+      host: grpcHost(cfg.grpcUrl),
+      channelCredentials: ChannelCredentials.createSsl(),
+      // Tatum authenticates gRPC with the key in call metadata.
+      meta: { "x-api-key": cfg.apiKey },
+    } as never);
+    client = new SuiGrpcClient({ network: "mainnet", transport });
+  } catch (err) {
+    log.warn("tatum_client_init_failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+  return client;
+}
+
+/** Test/ops helper: drop the cached client. */
+export function __clearTatumClient(): void {
+  client = null;
+}
+
+// --- Pacing + budget --------------------------------------------------------
+
 let requestQueue: Promise<unknown> = Promise.resolve();
 let lastRequestAt = 0;
+let creditsThisHour = 0;
+let budgetWindowStart = Date.now();
 
-function enqueue<T>(fn: () => Promise<T>): Promise<T> {
-  const run = requestQueue.then(fn);
-  requestQueue = run.then(
-    () => undefined,
-    () => undefined,
-  );
-  return run;
+function takeCredit(): boolean {
+  const now = Date.now();
+  if (now - budgetWindowStart > 3600_000) {
+    budgetWindowStart = now;
+    creditsThisHour = 0;
+  }
+  if (creditsThisHour >= CREDIT_BUDGET_PER_HOUR) return false;
+  creditsThisHour++;
+  return true;
+}
+
+export function tatumCreditUsage(): { used: number; budget: number; window: number } {
+  return {
+    used: creditsThisHour,
+    budget: CREDIT_BUDGET_PER_HOUR,
+    window: Math.max(0, 3600_000 - (Date.now() - budgetWindowStart)),
+  };
 }
 
 async function pace(): Promise<void> {
@@ -97,59 +137,61 @@ async function pace(): Promise<void> {
   lastRequestAt = Date.now();
 }
 
-async function rpc<T>(method: string, params: unknown[]): Promise<T | null> {
-  const cfg = tatumConfig();
-  if (!cfg) return null;
-  return enqueue(() => performRpc<T>(cfg, method, params));
-}
-
-async function performRpc<T>(
-  cfg: TatumConfig,
-  method: string,
-  params: unknown[],
-): Promise<T | null> {
-  let lastError = "unknown";
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    await pace();
-
-    try {
-      const res = await fetch(cfg.rpcUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": cfg.apiKey,
-        },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
-        signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
-      });
-
-      if (res.status === 429) {
-        const retryAfter = Number(res.headers.get("retry-after") ?? 0);
-        const backoff = retryAfter > 0 ? retryAfter * 1000 : Math.min(5000, 900 * 2 ** attempt);
-        lastError = "HTTP 429 (rate limited)";
-        log.warn("tatum_rate_limited", { method, backoffMs: backoff });
-        await new Promise((r) => setTimeout(r, backoff));
-        continue;
-      }
-      if (!res.ok) {
-        lastError = `HTTP ${res.status}`;
-        continue;
-      }
-
-      const json = (await res.json()) as RpcEnvelope<T>;
-      if (json.error) {
-        lastError = json.error.message;
-        continue;
-      }
-      return json.result ?? null;
-    } catch (err) {
-      lastError = err instanceof Error ? err.message : String(err);
-    }
+/**
+ * Run one gRPC call through the paced queue with a single retry. Every call
+ * counts against the free plan, so the budget is checked first.
+ */
+async function call<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
+  if (!takeCredit()) {
+    log.warn("tatum_budget_exhausted", { label });
+    return null;
   }
-  log.warn("tatum_rpc_failed", { method, error: lastError });
-  return null;
+  const run = requestQueue.then(async () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      await pace();
+      try {
+        return await fn();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log.warn("tatum_call_failed", { label, attempt, error: message });
+        if (attempt === 0) await new Promise((r) => setTimeout(r, 900));
+      }
+    }
+    return null;
+  });
+  requestQueue = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
 }
 
+// --- TTL cache --------------------------------------------------------------
+// Epochs change every two weeks and delegation rarely changes, so re-reading
+// them per request would burn the free plan's credits for nothing.
+
+interface CacheEntry<T> {
+  value: T;
+  expiresAt: number;
+}
+const cache = new Map<string, CacheEntry<unknown>>();
+
+async function cached<T>(
+  key: string,
+  ttlMs: number,
+  load: () => Promise<T | null>,
+): Promise<T | null> {
+  const hit = cache.get(key) as CacheEntry<T> | undefined;
+  if (hit && hit.expiresAt > Date.now()) return hit.value;
+  const value = await load();
+  if (value !== null) cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+  return value;
+}
+
+/** Test/ops helper: clear the onchain cache. */
+export function clearTatumCache(): void {
+  cache.clear();
+}
 
 // --- Blob id codec ----------------------------------------------------------
 
@@ -179,7 +221,11 @@ export function decimalToBlobId(decimal: string): string | null {
       bytes[i] = Number(n & BigInt(255));
       n >>= BigInt(8);
     }
-    return bytes.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    return bytes
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
   } catch {
     return null;
   }
@@ -224,83 +270,31 @@ export interface BlobOnchain {
   deletable: boolean;
 }
 
-// --- Credit budget ---------------------------------------------------------
-// The free plan carries 100K credits (lifetime, not monthly) and auto-upgrades
-// when exhausted, so an unbounded poller could spend the user's money. This
-// keeps Dejavu inside the free tier by construction: a hard hourly request
-// budget, after which we serve the last known good values instead of asking.
-
-const CREDIT_BUDGET_PER_HOUR = 120;
-let creditsThisHour = 0;
-let budgetWindowStart = Date.now();
-
-function takeCredit(): boolean {
-  const now = Date.now();
-  if (now - budgetWindowStart > 3600_000) {
-    budgetWindowStart = now;
-    creditsThisHour = 0;
-  }
-  if (creditsThisHour >= CREDIT_BUDGET_PER_HOUR) return false;
-  creditsThisHour++;
-  return true;
+interface GrpcObject {
+  objectId: string;
+  type?: string;
+  json?: Record<string, unknown>;
 }
 
-/** Credits spent in the current hour (for the health endpoint). */
-export function tatumCreditUsage(): { used: number; budget: number; window: number } {
-  return {
-    used: creditsThisHour,
-    budget: CREDIT_BUDGET_PER_HOUR,
-    window: Math.max(0, 3600_000 - (Date.now() - budgetWindowStart)),
-  };
-}
-
-// --- TTL cache --------------------------------------------------------------
-// Epochs change every two weeks and delegation rarely changes, so re-reading
-// them per request would burn the free plan's credits (and 3 RPS) for nothing.
-
-interface CacheEntry<T> {
-  value: T;
-  expiresAt: number;
-}
-const cache = new Map<string, CacheEntry<unknown>>();
-
-async function cached<T>(key: string, ttlMs: number, load: () => Promise<T | null>): Promise<T | null> {
-  const hit = cache.get(key) as CacheEntry<T> | undefined;
-  if (hit && hit.expiresAt > Date.now()) return hit.value;
-  if (!takeCredit()) {
-    // Budget spent: serve the stale value rather than spending more.
-    return hit?.value ?? null;
-  }
-  const value = await load();
-  if (value !== null) cache.set(key, { value, expiresAt: Date.now() + ttlMs });
-  return value;
-}
-
-/** Test/ops helper: clear the onchain cache. */
-export function clearTatumCache(): void {
-  cache.clear();
+async function getObjectJson(objectId: string): Promise<GrpcObject | null> {
+  const c = getClient();
+  if (!c) return null;
+  return call(`getObject:${objectId.slice(0, 10)}`, async () => {
+    const res = (await c.getObject({
+      objectId,
+      include: { json: true },
+    })) as unknown as { object?: GrpcObject } & GrpcObject;
+    const obj = res.object ?? res;
+    if (!obj?.objectId) return null;
+    return obj;
+  });
 }
 
 // --- Walrus system state ----------------------------------------------------
 
-interface MoveObject<T> {
-  data?: {
-    objectId: string;
-    content?: { type: string; fields: T };
-  };
-}
-
-async function getMoveFields<T>(objectId: string): Promise<T | null> {
-  const res = await rpc<MoveObject<T>>("sui_getObject", [
-    objectId,
-    { showContent: true },
-  ]);
-  return res?.data?.content?.fields ?? null;
-}
-
 /**
- * The Walrus system object wraps a versioned state object exposed as a
- * dynamic field. Read that field to get the live epoch and prices.
+ * The Walrus system object wraps a versioned state object exposed as a dynamic
+ * field. Resolve that field, then read the live epoch and prices from it.
  * Cached: the epoch advances every two weeks.
  */
 export async function getWalrusSystemState(): Promise<WalrusSystemState | null> {
@@ -310,34 +304,52 @@ export async function getWalrusSystemState(): Promise<WalrusSystemState | null> 
 }
 
 async function loadWalrusSystemState(cfg: TatumConfig): Promise<WalrusSystemState | null> {
-  const dyn = await rpc<{
-    data?: { objectId: string; objectType?: string }[];
-  }>("suix_getDynamicFields", [cfg.systemObjectId, null, 10]);
-  const stateField = dyn?.data?.find(
-    (f) => typeof f.objectType === "string" && f.objectType.includes("SystemStateInner"),
-  );
-  if (!stateField) return null;
+  const c = getClient();
+  if (!c) return null;
 
-  const wrapper = await getMoveFields<{
-    value?: { fields?: Record<string, unknown> };
-  }>(stateField.objectId);
-  const inner = wrapper?.value?.fields;
-  if (!inner) return null;
+  const fields = await call("listDynamicFields", async () => {
+    const res = (await c.listDynamicFields({
+      parentId: cfg.systemObjectId,
+      limit: 10,
+    })) as unknown as {
+      dynamicFields?: {
+        objectId?: string;
+        fieldId?: string;
+        objectType?: string;
+        valueType?: string;
+        type?: string;
+      }[];
+    };
+    const field = (res.dynamicFields ?? []).find((f) => {
+      const t = f.valueType ?? f.objectType ?? f.type ?? "";
+      return t.includes("SystemStateInner");
+    });
+    return field?.fieldId ?? field?.objectId ?? null;
+  });
+  if (!fields) return null;
 
-  const committee = inner.committee as
-    | { fields?: { epoch?: number; n_shards?: number } }
+  const wrapper = await getObjectJson(fields);
+  const value = wrapper?.json?.value as
+    | {
+        committee?: { epoch?: number | string; n_shards?: number | string };
+        total_capacity_size?: number | string;
+        used_capacity_size?: number | string;
+        storage_price_per_unit_size?: number | string;
+        write_price_per_unit_size?: number | string;
+      }
     | undefined;
-  const committeeFields = committee?.fields ?? (committee as never);
-  const epoch = Number(committeeFields?.epoch ?? NaN);
+  if (!value) return null;
+
+  const epoch = Number(value.committee?.epoch ?? NaN);
   if (!Number.isFinite(epoch)) return null;
 
   return {
     epoch,
-    nShards: Number(committeeFields?.n_shards ?? 0),
-    totalCapacityBytes: Number(inner.total_capacity_size ?? 0),
-    usedCapacityBytes: Number(inner.used_capacity_size ?? 0),
-    storagePricePerUnit: Number(inner.storage_price_per_unit_size ?? 0),
-    writePricePerUnit: Number(inner.write_price_per_unit_size ?? 0),
+    nShards: Number(value.committee?.n_shards ?? 0),
+    totalCapacityBytes: Number(value.total_capacity_size ?? 0),
+    usedCapacityBytes: Number(value.used_capacity_size ?? 0),
+    storagePricePerUnit: Number(value.storage_price_per_unit_size ?? 0),
+    writePricePerUnit: Number(value.write_price_per_unit_size ?? 0),
     epochDays: EPOCH_DAYS,
   };
 }
@@ -351,30 +363,30 @@ export async function getMemWalAccount(): Promise<MemWalAccountOnchain | null> {
 }
 
 async function loadMemWalAccount(cfg: TatumConfig): Promise<MemWalAccountOnchain | null> {
-  const fields = await getMoveFields<{
-    owner?: string;
-    active?: boolean;
-    admin_quarantined?: boolean;
-    created_at?: number | string;
-    delegate_keys?: {
-      fields?: {
-        label?: string;
-        public_key?: number[];
-        sui_address?: string;
+  const obj = await getObjectJson(cfg.accountId);
+  const fields = obj?.json as
+    | {
+        owner?: string;
+        active?: boolean;
+        admin_quarantined?: boolean;
         created_at?: number | string;
-      };
-    }[];
-  }>(cfg.accountId);
+        delegate_keys?: {
+          label?: string;
+          public_key?: number[];
+          sui_address?: string;
+          created_at?: number | string;
+        }[];
+      }
+    | undefined;
   if (!fields) return null;
 
   const delegates: DelegateKeyOnchain[] = (fields.delegate_keys ?? []).map((d) => {
-    const f = d.fields ?? {};
-    const bytes = Array.isArray(f.public_key) ? f.public_key : [];
+    const bytes = Array.isArray(d.public_key) ? d.public_key : [];
     return {
-      label: String(f.label ?? ""),
+      label: String(d.label ?? ""),
       publicKeyHex: Buffer.from(bytes).toString("hex"),
-      suiAddress: String(f.sui_address ?? ""),
-      createdAt: Number(f.created_at ?? 0),
+      suiAddress: String(d.sui_address ?? ""),
+      createdAt: Number(d.created_at ?? 0),
     };
   });
 
@@ -414,66 +426,57 @@ export function checkDelegate(
 
 // --- Blob objects -----------------------------------------------------------
 
-interface OwnedObject {
-  data?: {
-    objectId: string;
-    type?: string;
-    content?: {
-      fields?: {
-        blob_id?: string;
-        size?: string;
-        registered_epoch?: number;
-        certified_epoch?: number | null;
-        deletable?: boolean;
-        storage?: { fields?: { start_epoch?: number; end_epoch?: number } };
-      };
-    };
-  };
-}
-
 /**
  * Every Walrus Blob object owned by `owner`, with metadata.
  *
- * One paged `suix_getOwnedObjects` call with `showContent` returns the Blob
- * fields directly — 60 objects cost two HTTP requests. (Batched JSON-RPC is a
- * paid-plan feature, so the free plan must not rely on it.)
+ * One paged `listOwnedObjects` call with JSON content returns the Blob fields
+ * directly — 60 objects cost two gRPC calls.
  *
  * Returns a Map keyed by the base64url Walrus blob id.
  */
 export async function listOwnedBlobs(owner: string): Promise<Map<string, BlobOnchain>> {
   if (!owner) return new Map();
-  const hit = await cached(`blobs:${owner}`, 15 * 60_000, async () => loadOwnedBlobs(owner));
+  const hit = await cached(`blobs:${owner}`, 15 * 60_000, () => loadOwnedBlobs(owner));
   return hit ?? new Map();
 }
 
 async function loadOwnedBlobs(owner: string): Promise<Map<string, BlobOnchain>> {
   const out = new Map<string, BlobOnchain>();
+  const c = getClient();
+  if (!c) return out;
+
   let cursor: string | null = null;
-
   for (let page = 0; page < 20; page++) {
-    const res: {
-      data?: OwnedObject[];
-      nextCursor?: string | null;
-      hasNextPage?: boolean;
-    } | null = await rpc<{
-      data?: OwnedObject[];
-      nextCursor?: string | null;
-      hasNextPage?: boolean;
-    }>("suix_getOwnedObjects", [
-      owner,
-      { options: { showType: true, showContent: true } },
-      cursor,
-      50,
-    ]);
+    const res = await call(`listOwnedObjects:${page}`, async () => {
+      return (await c.listOwnedObjects({
+        owner,
+        include: { json: true },
+        limit: 50,
+        cursor,
+      })) as unknown as {
+        objects?: GrpcObject[];
+        hasNextPage?: boolean;
+        cursor?: string | null;
+      };
+    });
+    if (!res) break;
 
-    for (const o of res?.data ?? []) {
-      const data = o.data;
-      const f = data?.content?.fields;
-      if (!data?.objectId || !f?.blob_id) continue;
+    for (const obj of res.objects ?? []) {
+      const f = obj.json as
+        | {
+            blob_id?: string;
+            size?: string;
+            registered_epoch?: number;
+            certified_epoch?: number | null;
+            deletable?: boolean;
+            storage?: { start_epoch?: number; end_epoch?: number };
+          }
+        | undefined;
+      if (!obj.objectId || !f?.blob_id) continue;
       const blobId = decimalToBlobId(String(f.blob_id));
       if (!blobId) continue;
       out.set(blobId, {
-        objectId: data.objectId,
+        objectId: obj.objectId,
         blobId,
         sizeBytes: Number(f.size ?? 0),
         registeredEpoch: Number(f.registered_epoch ?? 0),
@@ -481,14 +484,14 @@ async function loadOwnedBlobs(owner: string): Promise<Map<string, BlobOnchain>> 
           f.certified_epoch === null || f.certified_epoch === undefined
             ? null
             : Number(f.certified_epoch),
-        startEpoch: Number(f.storage?.fields?.start_epoch ?? 0),
-        endEpoch: Number(f.storage?.fields?.end_epoch ?? 0),
+        startEpoch: Number(f.storage?.start_epoch ?? 0),
+        endEpoch: Number(f.storage?.end_epoch ?? 0),
         deletable: f.deletable === true,
       });
     }
 
-    if (!res?.hasNextPage) break;
-    cursor = res.nextCursor ?? null;
+    if (!res.hasNextPage) break;
+    cursor = res.cursor ?? null;
     if (!cursor) break;
   }
 
@@ -591,4 +594,4 @@ export async function verifyMemoriesOnchain(
   };
 }
 
-export { MAINNET_RPC, MAINNET_WALRUS_SYSTEM };
+export { MAINNET_GRPC, MAINNET_WALRUS_SYSTEM };

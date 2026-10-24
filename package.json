@@ -2,7 +2,7 @@
   "name": "dejavu",
   "version": "0.1.0",
   "private": true,
-  "description": "Dejavu \u2014 a memory companion for everything worth remembering, with portable, verifiable memory on Walrus.",
+  "description": "Dejavu — a memory companion for everything worth remembering, with portable, verifiable memory on Walrus.",
   "license": "MIT",
   "type": "module",
   "scripts": {
@@ -26,7 +26,10 @@
     "tatum:verify": "tsx scripts/verify-tatum.ts"
   },
   "dependencies": {
+    "@grpc/grpc-js": "^1.14.6",
     "@mysten-incubation/memwal": "^0.1.8",
+    "@mysten/sui": "^2.37.0",
+    "@protobuf-ts/grpc-transport": "^2.11.1",
     "@typesafe-ai/sdk": "^0.6.0",
     "clsx": "2.1.1",
     "date-fns": "4.1.0",

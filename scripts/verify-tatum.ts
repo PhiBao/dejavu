@@ -1,5 +1,5 @@
 /**
- * Verify Dejavu's memory layer independently, through Tatum's Sui RPC.
+ * Verify Dejavu's memory layer independently, through Tatum's Sui gRPC.
  *
  * Proves three claims against chain state instead of trusting the relayer:
  *   1. the Walrus system is live and what epoch it is on
@@ -34,7 +34,7 @@ function check(name: string, ok: boolean, detail = ""): void {
 
 async function main() {
   const e = env();
-  console.log(`[tatum] rpc ${e.TATUM_SUI_RPC_URL}`);
+  console.log(`[tatum] grpc ${e.TATUM_SUI_GRPC_URL}`);
   check("Tatum configured", isTatumConfigured());
 
   // --- 1. Walrus system state ---------------------------------------------

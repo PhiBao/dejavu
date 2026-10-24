@@ -63,11 +63,14 @@ const schema = z.object({
   TYPESAFE_API_KEY: z.string().optional(),
   TYPESAFE_MODEL_ID: z.string().default("jev-latest"),
 
-  // Tatum — independent onchain verification of the memory layer via Sui RPC
+  // Tatum — independent onchain verification of the memory layer via Sui gRPC
   // (Walrus system epoch, MemWalAccount delegation, Blob objects + expiry).
   // Optional: without it the app trusts the relayer and skips chain checks.
   TATUM_API_KEY: z.string().optional(),
-  TATUM_SUI_RPC_URL: z.string().default("https://sui-mainnet.gateway.tatum.io"),
+  // Sui deprecated JSON-RPC; Tatum serves Sui over native gRPC.
+  TATUM_SUI_GRPC_URL: z
+    .string()
+    .default("https://sui-mainnet-grpc.gateway.tatum.io"),
   TATUM_WALRUS_SYSTEM_OBJECT_ID: z
     .string()
     .default("0x2134d52768ea07e8c43570ef975eb3e4c27a39fa6396bef985b5abc58d03ddd2"),
@@ -94,6 +97,7 @@ export function env(): Env {
   if (!legacy.DEJAVU_DATA_PATH && legacy.RECALL_DATA_PATH) legacy.DEJAVU_DATA_PATH = legacy.RECALL_DATA_PATH;
   if (!legacy.DEJAVU_AWS_ACCESS_KEY_ID && legacy.RECALL_AWS_ACCESS_KEY_ID) legacy.DEJAVU_AWS_ACCESS_KEY_ID = legacy.RECALL_AWS_ACCESS_KEY_ID;
   if (!legacy.DEJAVU_AWS_SECRET_ACCESS_KEY && legacy.RECALL_AWS_SECRET_ACCESS_KEY) legacy.DEJAVU_AWS_SECRET_ACCESS_KEY = legacy.RECALL_AWS_SECRET_ACCESS_KEY;
+  if (!legacy.TATUM_SUI_GRPC_URL && legacy.TATUM_SUI_RPC_URL) legacy.TATUM_SUI_GRPC_URL = legacy.TATUM_SUI_RPC_URL;
   const parsed = schema.safeParse(legacy);
   if (!parsed.success) {
     const issues = parsed.error.issues
@@ -105,9 +109,11 @@ export function env(): Env {
   return cached;
 }
 
-/** True when no Bedrock API key is configured or AI_PROVIDER=mock. */
+/** True when no prose provider is configured or AI_PROVIDER=mock. */
 export function isMockAI(): boolean {
   const e = env();
   if (e.AI_PROVIDER === "mock") return true;
-  return !e.BEDROCK_API_KEY;
+  // Any configured writer counts: Token Factory, a generic OpenAI-compatible
+  // provider, or Bedrock. Missing Bedrock alone is not "mock".
+  return !(e.TOKENFACTORY_API_KEY || e.LLM_API_KEY || e.BEDROCK_API_KEY);
 }

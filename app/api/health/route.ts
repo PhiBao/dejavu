@@ -14,7 +14,7 @@ import { isTatumConfigured, tatumCreditUsage, verifyMemoriesOnchain } from "@/li
 /**
  * Health check (and human eyes). Reports the AI path, the local projection
  * counts, Walrus Memory status, and — when Tatum is configured — an
- * independent onchain verification of the memory layer through Sui RPC:
+ * independent onchain verification of the memory layer through Sui gRPC:
  * Walrus epoch, agent delegation, blob objects, and true expiry.
  *
  * GET /api/health
@@ -44,7 +44,7 @@ export async function GET() {
     counts: storeCounts(),
   };
 
-  // Independent source of truth: Sui RPC via Tatum. Never trust the relayer's
+  // Independent source of truth: Sui gRPC via Tatum. Never trust the relayer's
   // word for persistence when the chain can be asked directly.
   if (isTatumConfigured()) {
     try {

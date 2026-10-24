@@ -50,7 +50,7 @@ echo '.memwal/' >> .gitignore        # it holds a delegate key
 
 ### Prove the portability claim
 
-Capture something in the browser at **https://recall-walrus-memory.fly.dev**,
+Capture something in the browser at **https://dejavu-memory.fly.dev**,
 then ask the agent — with no context pasted, no export, nothing:
 
 > *"Who did I meet that's hiring React engineers?"*
@@ -73,7 +73,7 @@ judgment, not just its blobs.
 
 ### Step 1 — Generate your API key (in the app)
 
-1. Open the live app: **https://recall-walrus-memory.fly.dev**
+1. Open the live app: **https://dejavu-memory.fly.dev**
 2. Sign in with any email (a private memory space is created instantly).
 3. In the **API keys · MCP access** panel (right side of the workspace), click
    **Generate API key**.
@@ -105,13 +105,13 @@ DEJAVU_MCP_QUERY="who is hiring react engineers" pnpm exec tsx scripts/mcp-verif
 Pick your tool. In every case the **server URL** is the same:
 
 ```
-https://recall-walrus-memory.fly.dev/api/mcp
+https://dejavu-memory.fly.dev/api/mcp
 ```
 
 ### Claude Code
 
 ```bash
-claude mcp add recall https://recall-walrus-memory.fly.dev/api/mcp \
+claude mcp add recall https://dejavu-memory.fly.dev/api/mcp \
   --transport http --header "Authorization: Bearer <your-key>"
 ```
 
@@ -127,7 +127,7 @@ Add to `.cursor/mcp.json`:
   "mcpServers": {
     "recall": {
       "type": "http",
-      "url": "https://recall-walrus-memory.fly.dev/api/mcp",
+      "url": "https://dejavu-memory.fly.dev/api/mcp",
       "headers": { "Authorization": "Bearer <your-key>" }
     }
   }
@@ -146,7 +146,7 @@ Add to `.vscode/mcp.json`:
   "servers": {
     "recall": {
       "type": "http",
-      "url": "https://recall-walrus-memory.fly.dev/api/mcp",
+      "url": "https://dejavu-memory.fly.dev/api/mcp",
       "headers": { "Authorization": "Bearer <your-key>" }
     }
   }
@@ -162,7 +162,7 @@ Add to `cline_mcp_settings.json`:
   "mcpServers": {
     "recall": {
       "type": "streamableHttp",
-      "url": "https://recall-walrus-memory.fly.dev/api/mcp",
+      "url": "https://dejavu-memory.fly.dev/api/mcp",
       "headers": { "Authorization": "Bearer <your-key>" }
     }
   }
@@ -172,7 +172,7 @@ Add to `cline_mcp_settings.json`:
 ### Codex
 
 ```bash
-codex mcp add recall --url https://recall-walrus-memory.fly.dev/api/mcp \
+codex mcp add recall --url https://dejavu-memory.fly.dev/api/mcp \
   --header "Authorization: Bearer <your-key>"
 ```
 
@@ -220,7 +220,7 @@ below is a command in this repo, not a claim in prose:
   the public aggregator and get **ciphertext** — the app surfaces this as a
   ⬡ chip next to each memory: *publicly verifiable, privately readable*.
 - **Lifetime:** the onchain storage window is authoritative, and it is shorter
-  than the SDK default. Measured via Tatum RPC: blobs at epoch 40 with storage
+  than the SDK default. Measured via Tatum gRPC: blobs at epoch 40 with storage
   through epoch 55 → **196 days**, not 50 epochs. `GET /api/health` and the
   Memory Health card report the chain's answer (`end_epoch` → real date), and
   warn before expiry instead of discovering it as amnesia.
