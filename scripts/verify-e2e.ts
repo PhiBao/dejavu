@@ -94,6 +94,47 @@ async function main() {
   const promise = await mem.recall(uid, "what did I promise Priya?");
   check("commitment recallable", /priya/i.test(promise.answer), promise.answer.slice(0, 80));
 
+  // --- 2b. Lifecycle: a correction replaces the old truth -----------------
+  console.log("\n[e2e] lifecycle — corrections must supersede, not accumulate");
+  const sarahForUpdate = people.find((p) => p.name === "Sarah Chen");
+  const correction = await mem.captureMemory(
+    uid,
+    "Sarah Chen is now a founder at Linear.",
+  );
+  check(
+    "correction resolves the same person",
+    correction.person?.id === sarahForUpdate?.id,
+    `got ${correction.person?.name ?? "null"}`,
+  );
+  if (sarahForUpdate) {
+    const current = await mem.getPersonFacts(uid, sarahForUpdate.id);
+    const companies = current.filter((f) => f.key === "company");
+    check(
+      "current employer is the correction",
+      companies.length === 1 && /linear/i.test(companies[0]?.value ?? ""),
+      companies.map((f) => f.value).join(", "),
+    );
+    const history = await mem.getPersonFacts(uid, sarahForUpdate.id, {
+      includeSuperseded: true,
+    });
+    check(
+      "old employer is kept as history",
+      history.some((f) => f.status === "superseded" && /nimbus/i.test(f.value)),
+      history.map((f) => `${f.value}/${f.status}`).join(", "),
+    );
+    const updated = await mem.recall(uid, "Where does Sarah Chen work now?");
+    check(
+      "answer uses the current employer",
+      /linear/i.test(updated.answer) && !/nimbus/i.test(updated.answer),
+      updated.answer.slice(0, 120),
+    );
+    check(
+      "stale source is not cited beside the correction",
+      updated.citations.every((c) => !/nimbus/i.test(c.snippet)),
+      `${updated.citations.length} citations`,
+    );
+  }
+
   // --- 3. Abstention: no answer, no citations, no synthesis ---------------
   console.log("\n[e2e] abstention — unknown question must not hallucinate");
   const none = await mem.recall(uid, "Who do I know in Tokyo who plays competitive chess?");

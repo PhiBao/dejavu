@@ -12,7 +12,16 @@ import {
 } from "@/lib/auth";
 import {
   captureMemory,
+  consolidatePerson,
+  correctFact,
+  correctMemory,
+  forgetFact,
+  forgetMemory,
+  mergePeople,
   recall,
+  rebuildWorkspaceFromWalrus,
+  recordMemoryFeedback,
+  snoozePerson,
   updateCommitmentStatus,
 } from "@/lib/memory";
 import { userActionLimiter } from "@/lib/rate-limit";
@@ -166,6 +175,173 @@ export async function recallAction(
   }
 }
 
+const idSchema = z.string().uuid();
+const valueSchema = z.string().min(1).max(500);
+
+/**
+ * Correct a memory. The old version is retired (kept as history) and the new
+ * text goes through the full capture pipeline, including a fresh Walrus blob.
+ */
+export async function correctMemoryAction(
+  memoryId: string,
+  rawText: string,
+): Promise<{ ok: true; summary: string } | { ok: false; error: string }> {
+  const userId = await requireUserId();
+  try {
+    if (!userActionLimiter.check(userId)) {
+      return { ok: false, error: "Slow down — try again in a moment." };
+    }
+    const id = idSchema.parse(memoryId);
+    const parsed = captureSchema.safeParse(rawText);
+    if (!parsed.success) return { ok: false, error: "Please write a little more." };
+    const result = await correctMemory(userId, id, parsed.data);
+    if (!result) return { ok: false, error: "That memory can no longer be corrected." };
+    revalidatePath("/workspace", "layout");
+    if (result.person) revalidatePath(`/workspace/person/${result.person.id}`);
+    log.info("correct_memory", { userId, memoryId: id, newMemoryId: result.memory.id });
+    return { ok: true, summary: result.summary };
+  } catch (err) {
+    log.error("correct_memory_failed", {
+      userId,
+      memoryId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, error: "Could not correct that memory." };
+  }
+}
+
+export async function forgetMemoryAction(
+  memoryId: string,
+): Promise<{ ok: boolean }> {
+  const userId = await requireUserId();
+  try {
+    const id = idSchema.parse(memoryId);
+    const ok = await forgetMemory(userId, id);
+    revalidatePath("/workspace", "layout");
+    log.info("forget_memory", { userId, memoryId: id, ok });
+    return { ok };
+  } catch (err) {
+    log.error("forget_memory_failed", {
+      userId,
+      memoryId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false };
+  }
+}
+
+/** Correct one current fact. Creates a durable correction memory on Walrus. */
+export async function correctFactAction(
+  factId: string,
+  value: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const userId = await requireUserId();
+  try {
+    if (!userActionLimiter.check(userId)) {
+      return { ok: false, error: "Slow down — try again in a moment." };
+    }
+    const id = idSchema.parse(factId);
+    const parsed = valueSchema.safeParse(value);
+    if (!parsed.success) return { ok: false, error: "Enter a value to save." };
+    const result = await correctFact(userId, id, parsed.data);
+    if (!result) return { ok: false, error: "That detail can no longer be corrected." };
+    revalidatePath("/workspace", "layout");
+    log.info("correct_fact", { userId, factId: id, newFactId: result.fact.id });
+    return { ok: true };
+  } catch (err) {
+    log.error("correct_fact_failed", {
+      userId,
+      factId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, error: "Could not correct that detail." };
+  }
+}
+
+export async function forgetFactAction(
+  factId: string,
+): Promise<{ ok: boolean }> {
+  const userId = await requireUserId();
+  try {
+    const id = idSchema.parse(factId);
+    const ok = await forgetFact(userId, id);
+    revalidatePath("/workspace", "layout");
+    log.info("forget_fact", { userId, factId: id, ok });
+    return { ok };
+  } catch (err) {
+    log.error("forget_fact_failed", {
+      userId,
+      factId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false };
+  }
+}
+
+/** Merge a duplicate person into the current profile. */
+export async function mergePeopleAction(
+  primaryId: string,
+  duplicateId: string,
+): Promise<{ ok: true; personId: string } | { ok: false; error: string }> {
+  const userId = await requireUserId();
+  try {
+    const primary = idSchema.parse(primaryId);
+    const duplicate = idSchema.parse(duplicateId);
+    if (primary === duplicate) {
+      return { ok: false, error: "Those are the same person." };
+    }
+    const person = await mergePeople(userId, primary, duplicate);
+    if (!person) return { ok: false, error: "Could not merge those people." };
+    revalidatePath("/workspace", "layout");
+    revalidatePath(`/workspace/person/${primary}`);
+    log.info("merge_people", { userId, primaryId: primary, duplicateId: duplicate });
+    return { ok: true, personId: person.id };
+  } catch (err) {
+    log.error("merge_people_failed", {
+      userId,
+      primaryId,
+      duplicateId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, error: "Could not merge those people." };
+  }
+}
+
+const feedbackSchema = z.enum(["useful", "wrong", "outdated"]);
+
+/**
+ * Explicit feedback on a citation. "Useful" boosts the memory; "wrong" and
+ * "outdated" retire it from future answers.
+ */
+export async function feedbackAction(
+  memoryId: string,
+  verdict: string,
+  question?: string,
+): Promise<{ ok: boolean; retired?: boolean }> {
+  const userId = await requireUserId();
+  try {
+    const id = idSchema.parse(memoryId);
+    const v = feedbackSchema.parse(verdict);
+    const ok = await recordMemoryFeedback(
+      userId,
+      id,
+      v,
+      question?.slice(0, 500) ?? null,
+    );
+    revalidatePath("/workspace", "layout");
+    log.info("memory_feedback", { userId, memoryId: id, verdict: v, ok });
+    return { ok, retired: v !== "useful" };
+  } catch (err) {
+    log.error("memory_feedback_failed", {
+      userId,
+      memoryId,
+      verdict,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false };
+  }
+}
+
 const statusSchema = z.enum(["done", "snoozed", "dismissed"]);
 
 export async function commitmentAction(
@@ -182,6 +358,93 @@ export async function commitmentAction(
     return { ok: true };
   } catch (err) {
     log.error("commitment_status_failed", { userId, commitmentId, status, error: err instanceof Error ? err.message : String(err) });
+    return { ok: false };
+  }
+}
+
+/** Consolidate a person into a canonical brief and write it back to Walrus. */
+export async function consolidatePersonAction(
+  personId: string,
+): Promise<
+  | { ok: true; briefId: string; blobId: string | null }
+  | { ok: false; error: string }
+> {
+  const userId = await requireUserId();
+  try {
+    if (!userActionLimiter.check(userId)) {
+      return { ok: false, error: "Slow down — try again in a moment." };
+    }
+    const id = idSchema.parse(personId);
+    const brief = await consolidatePerson(userId, id);
+    if (!brief) return { ok: false, error: "There is nothing to consolidate yet." };
+    revalidatePath("/workspace", "layout");
+    log.info("consolidate_person", {
+      userId,
+      personId: id,
+      briefId: brief.id,
+      blobId: brief.walrus_blob_id,
+    });
+    return { ok: true, briefId: brief.id, blobId: brief.walrus_blob_id };
+  } catch (err) {
+    log.error("consolidate_person_failed", {
+      userId,
+      personId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, error: "Could not consolidate that person." };
+  }
+}
+
+/** Rebuild people/facts/follow-ups from the enriched blobs on Walrus. */
+export async function rebuildWorkspaceAction(): Promise<
+  | {
+      ok: true;
+      memories: number;
+      people: number;
+      facts: number;
+      commitments: number;
+      skipped: number;
+      scanned: number;
+    }
+  | { ok: false; error: string }
+> {
+  const userId = await requireUserId();
+  try {
+    if (!userActionLimiter.check(userId)) {
+      return { ok: false, error: "Slow down — try again in a moment." };
+    }
+    const result = await rebuildWorkspaceFromWalrus(userId);
+    revalidatePath("/workspace", "layout");
+    log.info("rebuild_from_walrus", { userId, ...result });
+    return { ok: true, ...result };
+  } catch (err) {
+    log.error("rebuild_from_walrus_failed", {
+      userId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, error: "Could not rebuild from Walrus." };
+  }
+}
+
+/** Snooze a stale relationship: create a real follow-up in 14 days. */
+export async function reconnectAction(
+  personId: string,
+  days = 14,
+): Promise<{ ok: boolean }> {
+  const userId = await requireUserId();
+  try {
+    const id = idSchema.parse(personId);
+    const wait = Math.min(Math.max(Math.trunc(days), 1), 90);
+    const ok = await snoozePerson(userId, id, wait);
+    revalidatePath("/workspace", "layout");
+    log.info("snooze_person", { userId, personId: id, days: wait, ok });
+    return { ok };
+  } catch (err) {
+    log.error("snooze_person_failed", {
+      userId,
+      personId,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return { ok: false };
   }
 }

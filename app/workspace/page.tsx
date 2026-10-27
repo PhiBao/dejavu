@@ -1,30 +1,28 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
-import {
-  getTodayFeed,
-  listPeople,
-  recentMemories,
-} from "@/lib/memory";
+import { listPeople, recentMemories } from "@/lib/memory";
 import { listApiKeys } from "@/lib/api-keys";
 import { signOutAction } from "../actions";
 import { Composer } from "@/components/Composer";
-import { TodayCard } from "@/components/TodayCard";
+import { AttentionPanel } from "@/components/AttentionPanel";
 import { ApiKeysPanel } from "@/components/ApiKeysPanel";
 import { BlobChip } from "@/components/BlobChip";
 import { DemoLoader } from "@/components/DemoLoader";
 import { OnchainPanel } from "@/components/OnchainPanel";
+import { RebuildFromWalrus } from "@/components/RebuildFromWalrus";
 import { MemoryHealthPanel } from "@/components/MemoryHealthPanel";
+import { MemoryActions } from "@/components/MemoryActions";
 import { isTatumConfigured, verifyMemoriesOnchain } from "@/lib/tatum";
 import { computeMemoryHealth } from "@/lib/health";
+import { getAttentionFeed } from "@/lib/attention";
 import { getMemoryFacts, loadStore } from "@/lib/store";
 
 export default async function AppPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/");
 
-  const [today, people, recent, keys] = await Promise.all([
-    getTodayFeed(user.id),
+  const [people, recent, keys] = await Promise.all([
     listPeople(user.id),
     recentMemories(user.id, 8),
     listApiKeys(user.id),
@@ -47,6 +45,9 @@ export default async function AppPage() {
 
   // The learning loop's view: which memories actually earn their storage.
   const health = await computeMemoryHealth(user.id);
+  // The agent's view: what needs a human now. Health is passed in so the
+  // onchain expiry data is fetched once, not twice.
+  const attention = await getAttentionFeed(user.id, health);
 
   const firstName = user.name?.split(" ")[0] ?? "there";
 
@@ -60,11 +61,19 @@ export default async function AppPage() {
               <span className="text-lg">🪳</span>
               <span className="font-semibold tracking-tight">Dejavu</span>
             </div>
-            <form action={signOutAction}>
-              <button className="text-sm text-ink/50 hover:text-ink">
-                Sign out
-              </button>
-            </form>
+            <div className="flex items-center gap-4">
+              <Link
+                href="/capture"
+                className="rounded-lg border border-ink/10 bg-white px-3 py-1.5 text-xs font-medium text-ink/60 transition hover:border-accent/40 hover:text-ink"
+              >
+                Quick capture
+              </Link>
+              <form action={signOutAction}>
+                <button className="text-sm text-ink/50 hover:text-ink">
+                  Sign out
+                </button>
+              </form>
+            </div>
           </header>
 
           <div className="mb-2">
@@ -130,6 +139,7 @@ export default async function AppPage() {
                         <BlobChip blobId={m.walrus_blob_id} />
                       </span>
                     )}
+                    <MemoryActions memoryId={m.id} content={m.content} compact />
                   </li>
                 ))}
               </ul>
@@ -137,27 +147,12 @@ export default async function AppPage() {
           )}
         </section>
 
-        {/* Right: Today feed + people */}
+        {/* Right: what needs attention, then proof, then people */}
         <aside className="flex flex-col gap-8">
+          <AttentionPanel feed={attention} />
           <MemoryHealthPanel health={health} />
           <OnchainPanel data={onchain} />
-          <div>
-            <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink/40">
-              Today · follow up
-            </h2>
-            {today.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-ink/15 p-4 text-sm text-ink/50">
-                Nothing due. When you promise to follow up with someone, it
-                shows up here.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {today.map((item) => (
-                  <TodayCard key={item.commitment.id} item={item} />
-                ))}
-              </div>
-            )}
-          </div>
+          <RebuildFromWalrus />
 
           <div>
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink/40">

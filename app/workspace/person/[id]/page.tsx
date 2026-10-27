@@ -3,10 +3,17 @@ import Link from "next/link";
 import { getUserId } from "@/lib/auth";
 import {
   getPerson,
+  getPersonBrief,
   getPersonFacts,
   getPersonMemories,
+  suggestDuplicatePeople,
 } from "@/lib/memory";
 import { BlobChip } from "@/components/BlobChip";
+import { FactList } from "@/components/FactList";
+import { MergePeople } from "@/components/MergePeople";
+import { MemoryActions } from "@/components/MemoryActions";
+import { ConsolidateButton } from "@/components/ConsolidateButton";
+import { getBlobProvenance } from "@/lib/tatum";
 
 export default async function PersonPage({
   params,
@@ -20,10 +27,18 @@ export default async function PersonPage({
   const person = await getPerson(userId, id);
   if (!person) notFound();
 
-  const [facts, memories] = await Promise.all([
-    getPersonFacts(userId, id),
-    getPersonMemories(userId, id),
+  const [facts, memories, brief] = await Promise.all([
+    getPersonFacts(userId, id, { includeSuperseded: true }),
+    getPersonMemories(userId, id, { includeSuperseded: true }),
+    getPersonBrief(userId, id),
   ]);
+  const duplicates = suggestDuplicatePeople(userId, id);
+  const provenance = await getBlobProvenance(
+    memories
+      .map((m) => m.walrus_blob_id)
+      .filter((blobId): blobId is string => !!blobId),
+  );
+  const provenanceCheckedAt = new Date().toISOString();
 
   return (
     <main className="min-h-screen bg-paper">
@@ -54,31 +69,58 @@ export default async function PersonPage({
           </div>
         </header>
 
+        <MergePeople
+          primaryId={person.id}
+          candidates={duplicates.map((d) => ({
+            id: d.person.id,
+            name: d.person.name,
+            reason: d.reason,
+            score: d.score,
+          }))}
+        />
+
         {/* Facts */}
         <section className="mt-8">
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink/40">
             What you know
           </h2>
-          {facts.length === 0 ? (
-            <p className="text-sm text-ink/50">
-              No structured details yet — they’ll appear as you capture more.
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-2">
-              {facts.map((f) => (
-                <span
-                  key={f.id}
-                  className="rounded-lg border border-ink/10 bg-white px-3 py-1.5 text-sm"
-                  title={`from a memory on ${new Date(f.created_at).toLocaleDateString()}`}
-                >
-                  <span className="text-ink/40">
-                    {f.attribute.replace(/_/g, " ")}:
-                  </span>{" "}
-                  <span className="font-medium">{f.value}</span>
+          <FactList facts={facts} />
+        </section>
+
+        {/* Canonical brief */}
+        <section className="mt-8">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-ink/40">
+              Canonical brief
+            </h2>
+            {brief && (
+              <span className="text-[11px] text-ink/35">
+                {brief.source_memory_ids.length} source memor
+                {brief.source_memory_ids.length === 1 ? "y" : "ies"}
+              </span>
+            )}
+          </div>
+          {brief ? (
+            <div className="rounded-xl border border-ink/10 bg-white p-4">
+              <p className="whitespace-pre-line text-sm leading-relaxed text-ink/80">
+                {brief.content}
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                {brief.walrus_blob_id && (
+                  <BlobChip blobId={brief.walrus_blob_id} />
+                )}
+                <span className="text-[11px] text-ink/35">
+                  {new Date(brief.created_at).toLocaleString()}
                 </span>
-              ))}
+              </div>
             </div>
+          ) : (
+            <p className="text-sm text-ink/50">
+              No consolidated brief yet. Consolidating distills this person’s
+              current facts and memories into one durable summary on Walrus.
+            </p>
           )}
+          <ConsolidateButton personId={person.id} />
         </section>
 
         {/* Timeline */}
@@ -86,23 +128,91 @@ export default async function PersonPage({
           <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-ink/40">
             Timeline
           </h2>
-          <ol className="space-y-3">
-            {memories.map((m) => (
-              <li
-                key={m.id}
-                className="rounded-xl border border-ink/5 bg-white p-4"
-              >
-                <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-ink/40">
-                  <span className="rounded bg-ink/5 px-1.5 py-0.5 capitalize">
-                    {m.kind}
-                  </span>
-                  <span>{new Date(m.occurred_at).toLocaleString()}</span>
-                  {m.walrus_blob_id && <BlobChip blobId={m.walrus_blob_id} />}
-                </div>
-                <p className="text-sm text-ink/80">{m.content}</p>
-              </li>
-            ))}
-          </ol>
+          {memories.length === 0 ? (
+            <p className="text-sm text-ink/50">Nothing captured yet.</p>
+          ) : (
+            <ol className="space-y-3">
+              {memories.map((m) => {
+                const happened = new Date(m.occurred_at).toLocaleDateString();
+                const captured = new Date(m.created_at).toLocaleDateString();
+                return (
+                  <li
+                    key={m.id}
+                    className={[
+                      "rounded-xl border border-ink/5 bg-white p-4",
+                      m.status === "superseded" ? "opacity-60" : "",
+                    ].join(" ")}
+                  >
+                    <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-ink/40">
+                      <span className="rounded bg-ink/5 px-1.5 py-0.5 capitalize">
+                        {m.kind}
+                      </span>
+                      <span>
+                        {happened === captured
+                          ? captured
+                          : `happened ${happened} · captured ${captured}`}
+                      </span>
+                      {m.status === "superseded" && (
+                        <span className="rounded bg-ink/5 px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-ink/40">
+                          {m.superseded_by ? "replaced" : "retired"}
+                        </span>
+                      )}
+                      {m.walrus_blob_id && <BlobChip blobId={m.walrus_blob_id} />}
+                    </div>
+                    <p className="text-sm text-ink/80">{m.content}</p>
+                    {m.walrus_blob_id && (
+                      <details className="mt-2 text-[11px] text-ink/40">
+                        <summary className="cursor-pointer select-none hover:text-ink">
+                          Provenance
+                        </summary>
+                        <div className="mt-1 space-y-0.5 font-mono">
+                          <p className="break-all">blob {m.walrus_blob_id}</p>
+                          {(() => {
+                            const p = provenance.get(m.walrus_blob_id as string);
+                            if (!p) {
+                              return (
+                                <p>
+                                  onchain object not verified yet — the blob is
+                                  still fetchable from Walrus
+                                </p>
+                              );
+                            }
+                            return (
+                              <>
+                                <p className="break-all">
+                                  sui object{" "}
+                                  <a
+                                    href={`https://suiscan.xyz/mainnet/object/${p.objectId}`}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="text-accent hover:underline"
+                                  >
+                                    {p.objectId.slice(0, 10)}…{p.objectId.slice(-6)}
+                                  </a>
+                                </p>
+                                <p>
+                                  certified epoch {p.certifiedEpoch ?? "pending"} ·
+                                  storage {p.startEpoch} → {p.endEpoch} ·{" "}
+                                  {(p.sizeBytes / 1024).toFixed(1)} KB
+                                </p>
+                                <p>
+                                  read via Tatum Sui gRPC{" "}
+                                  {new Date(provenanceCheckedAt).toLocaleTimeString()}
+                                </p>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      </details>
+                    )}
+                    {m.status === "active" && (
+                      <MemoryActions memoryId={m.id} content={m.content} compact />
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
         </section>
       </div>
     </main>

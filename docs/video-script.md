@@ -66,12 +66,12 @@ Click through to Sarah's profile.
 > with a pre-drafted message I can copy in one tap. The daily nudge cron runs
 > serverlessly, so Dejavu acts without being asked."
 
-Show: a Today card, copy the draft.
+Show: an Attention card, copy the draft.
 
 ### 2:05–2:30 — The second agent (MCP)
 > "Dejavu doesn't just *have* memory — your own agents can *use* it. This is
-> Claude Code connected to my memory through Dejavu's MCP server — read-only,
-> scoped to me."
+> Claude Code connected to my memory through Dejavu's MCP server — scoped to
+> me, and able to read or capture."
 
 In Claude Code, ask: *"Which person has the most memories?"* then *"What did
 I promise Marcus?"*

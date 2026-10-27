@@ -20,8 +20,8 @@ Built for **Walrus × Tatum: Total Recall** (Track: *Smart Agents for Real Life*
 A single capture box and a single question box. Capture accepts anything
 worth remembering — people, notes, promises, ideas, deadlines — and turns it
 into structured memory stored on Walrus. Dejavu answers in natural language
-from those memories, cites them, and keeps a **Today** feed of follow-ups so
-promises don't quietly rot.
+from those memories, cites them, and keeps an **Attention** inbox with a Daily
+Brief so promises don't quietly rot.
 
 ### Who it is for
 
@@ -49,8 +49,20 @@ forgetting costs the most); the product is deliberately not limited to them.
 3. **It doesn't make things up.** Answers are grounded in retrieved memories,
    every shown citation is machine-checked, and unknown questions abstain
    before spending a generation call.
-4. **It tells you what it's about to forget.** Storage lifetime is read from
+4. **It stays current.** A correction supersedes the old belief instead of
+   sitting beside it; forgotten memories are tombstoned; duplicate people merge
+   into one profile. The current value wins in answers.
+5. **It tells you what it's about to forget.** Storage lifetime is read from
    Sui (via Tatum), not assumed, and surfaced before expiry.
+6. **It acts without being asked.** A Daily Brief and Attention inbox surface
+   overdue promises, relationships going cold, date-bearing facts coming due,
+   and details that recently changed — each with a draft grounded in the
+   person's actual history.
+7. **It learns from you, visibly.** Mark a citation useful, wrong, or outdated.
+   Useful memories rank higher; wrong/outdated ones are retired from future
+   answers. Consolidate a person into a canonical brief written back to Walrus.
+8. **It captures outside the app.** Install the PWA, use the home-screen
+   shortcut, speak a note, or share text from another app into Dejavu.
 
 ### Why now
 
@@ -76,7 +88,7 @@ swappable prose renderer — with the active writer shown on every answer.
 ```
 write one sentence  →  structure extracted  →  encrypted blob on Walrus
         ↓                                             ↓
-  follow-up lands in Today                   ask anything, in your own words
+  Attention inbox + Daily Brief               ask anything, in your own words
                                                       ↓
                                         cited answer + verified sources
 ```
@@ -94,7 +106,13 @@ app and starts feeling like memory.
 |---|---|
 | **Remember** | Extracts person (if any), facts, and follow-ups; writes one encrypted Walrus blob; shows who resolved the person and whether the blob is certified. |
 | **Dejavu** | Semantic search over your namespace → calibrated ranking → grounded synthesis → citation verification. Abstains when nothing is relevant. |
-| **Today** | Due/overdue follow-ups with a pre-drafted message. Done / Snooze / Dismiss. |
+| **Correct** | Replace a memory or a single fact. The old version becomes history; the new version is extracted, written to Walrus, and becomes the canonical value. |
+| **Forget** | Tombstone a memory. It is never recalled, cited, or used for follow-ups again. The encrypted blob remains onchain; Dejavu stops reading it. |
+| **Merge** | Duplicate people are suggested (same name, contained name, same first name + company). One click moves every memory, fact, and follow-up; conflicting facts keep the newest value. |
+| **Feedback** | Useful / Wrong / Outdated on any citation. Useful raises importance and ranking; wrong and outdated retire the memory and its facts from future answers immediately. |
+| **Consolidate** | Builds a canonical brief from current facts, open follow-ups, and recent memories, then writes the brief to Walrus as its own blob. The distilled view is as durable as the raw memories. |
+| **Quick capture** | Installable PWA at `/capture`: one field, browser voice input, and a Web Share Target so another app can send text straight into Dejavu. Same capture pipeline as the workspace. |
+| **Attention** | A Daily Brief plus overdue promises, cold relationships, expiring memories, dated facts, and recently changed details. Promises can be done/snoozed/dismissed; cold relationships can be snoozed into a real follow-up; every draft uses the person's facts and history. |
 | **Memory Health** | What Dejavu learned about which memories you actually rely on, and what the chain says about their storage window. |
 | **Verified onchain** | Independent Tatum Sui gRPC check: blob objects, agent delegation, Walrus epoch, real expiry. |
 | **MCP** | Any agent can read your memory — via Dejavu's scoped server, or Walrus Memory's native tools. |
@@ -108,7 +126,7 @@ app and starts feeling like memory.
 | Structure extracted | ✗ | ✓ (manual) | ✗ | **✓ automatic** |
 | Memory portable across apps | ✗ | ✗ | ✗ | **✓ Walrus blobs** |
 | Independent proof it exists | ✗ | ✗ | ✗ | **✓ Sui gRPC via Tatum** |
-| Proactive follow-up | ✗ | partial | ✗ | **✓ Today feed** |
+| Proactive follow-up | ✗ | partial | ✗ | **✓ Attention + Daily Brief** |
 
 ---
 
@@ -167,7 +185,7 @@ the session, the app, and the model.
 
 | Sponsor tech | Where it does real work |
 |---|---|
-| **Walrus Memory** | Every capture is one encrypted blob in a per-user namespace on **mainnet**. Dejavu searches it semantically, cites blob ids, and can rebuild its index from Walrus alone (`restore()`). Agents read the same blobs via Walrus Memory's native MCP. |
+| **Walrus Memory** | Every capture is one encrypted blob in a per-user namespace on **mainnet**. Dejavu searches it semantically, cites blob ids, rebuilds its search index (`restore()`), and reconstructs the full workspace from enriched blobs. Lifecycle manifests keep forgotten/retired versions from returning. Agents read and capture through Walrus Memory's native MCP or Dejavu's scoped MCP. |
 | **Tatum Sui gRPC** | Reads the Walrus system state (epoch, capacity, prices), the MemWalAccount (owner, active flag, delegate keys — verifying our agent's key is registered onchain), and every Walrus `Blob` object (certification epoch, storage window, size). This is the product's independent proof layer and the source of the expiry shown in the UI. |
 
 Not decorative: if Tatum is unavailable, the app says so and keeps working; if
@@ -178,8 +196,8 @@ is queued.
 
 | Criterion | Weight | Where it's addressed |
 |---|---|---|
-| Walrus & Tatum integration | 30% | One blob per capture in per-user namespaces; semantic recall with citations; `restore()` durability; native MCP portability. Tatum verifies every blob, the account's delegation, and the real storage window. |
-| Technical quality | 30% | Typed judgments with fallbacks, grounding gates, citation verification, 82 tests, 28-check e2e verifier, durability verifier, Tatum verifier, credit budget, per-user isolation. |
+| Walrus & Tatum integration | 30% | One blob per capture in per-user namespaces; semantic recall with citations; full workspace rebuild from Walrus with lifecycle tombstones; scoped MCP write; native MCP portability. Tatum verifies every blob, the account's delegation, and the real storage window. |
+| Technical quality | 30% | Typed judgments with fallbacks, grounding gates, citation verification, 112 tests, 33-check e2e verifier, rebuild-from-Walrus verifier, durability verifier, Tatum verifier, credit budget, per-user isolation. |
 | Creativity | 20% | Cited + machine-verified memory, calibrated abstention, an explainable importance loop tied to storage renewal. |
 | Presentation | 20% | Live app, one-click demo story, `/api/health` proof surface, this README, demo video. |
 
@@ -203,18 +221,28 @@ and there is no durable memory left.
 1. The writer extracts structure while Jev resolves identity, in parallel.
 2. Headline, company and every fact value are **grounded** against the note;
    anything not evidenced is dropped.
-3. The enriched record is written to Walrus Memory as one encrypted blob in the
+3. Dates are resolved **in code**, not by the model: "yesterday", "by Friday",
+   "March 2027" become calendar dates, and an expiry date is stored as a date,
+   not as prose.
+4. Facts are reconciled: a new value for a single-valued belief (company, role,
+   deadline) supersedes the old one; multi-valued interests accumulate.
+5. The enriched record is written to Walrus Memory as one encrypted blob in the
    user's namespace; the returned blob id lands on the projection row.
-4. Tatum reads the resulting `Blob` object back and records its storage window.
+6. Tatum reads the resulting `Blob` object back and records its storage window.
 
 **Recall** — a question in your own words:
 
 1. `memwal.recall()` returns a semantic shortlist from the namespace.
-2. Jev scores each candidate (calibrated 0–1); the learning loop adds a small
+2. Forgotten and superseded versions are filtered out before ranking; Walrus
+   cannot know a blob was tombstoned, so the projection decides what is true.
+3. Jev scores each candidate (calibrated 0–1); the learning loop adds a small
    reliance tie-break for memories you have actually used.
-3. If nothing clears the threshold, Dejavu **abstains before synthesis** — no
+4. If nothing clears the threshold, Dejavu **abstains before synthesis** — no
    generated answer, no citations, no cost.
-4. Otherwise the writer synthesizes only from the shortlist, and Jev verifies
+5. Current facts are authoritative. If the question targets a belief that has
+   changed, the current value answers and the stale source is not shown beside
+   it. Historical questions ("where did she work before?") still get history.
+6. Otherwise the writer synthesizes only from the shortlist, and Jev verifies
    every citation against its source. Contradicted sources are hidden; if all
    fail, the answer is withheld.
 
@@ -222,24 +250,28 @@ and there is no durable memory left.
 
 ![The Dejavu learning loop: capture, recall, record hits, score importance, renew before expiry, all written back to memory on Walrus](docs/diagrams/loop.svg)
 
-Every recall records which memory earned it. Importance is explainable —
-reliance (0.45), recency (0.20), relationship (0.20), obligation (0.15) — and
-feeds two visible behaviours: a capped ranking tie-break, and a renewal
-priority against the onchain expiry. The loop is how memory *changes the
-product* rather than merely persisting.
+Every recall records which memory earned it. Explicit feedback is stronger:
+**Useful** raises importance and the ranking tie-break; **Wrong** and
+**Outdated** retire the memory and its facts from future answers. Importance is
+explainable — reliance (0.45), recency (0.20), relationship (0.20), obligation
+(0.15), plus a bounded feedback adjustment — and feeds renewal priority against
+the onchain expiry. Consolidation distills a person into one canonical brief
+and writes it back to Walrus, so the learned view is durable too. The loop is
+how memory *changes the product* rather than merely persisting.
 
 ### Major components
 
 | Path | Responsibility |
 |---|---|
-| `lib/memory.ts` | Domain pipeline: `captureMemory()` and `recall()` — grounding, ranking, synthesis, verification. |
+| `lib/memory.ts` | Domain pipeline: `captureMemory()`, `recall()`, correction/forgetting/merge, canonical current facts. |
+| `lib/dates.ts` | Deterministic date parsing: events, deadlines, expiries, month-only dates. |
 | `lib/memwal.ts` | Walrus Memory client, per-user namespaces, blob URLs, durability helpers. |
 | `lib/tatum.ts` | Sui gRPC: Walrus system state, MemWal account + delegate check, blob index, expiry math, credit budget. |
 | `lib/judge.ts` | Calibrated judgments: intent routing, person resolution, relevance, citation verification. |
-| `lib/ai.ts` | Prose writer with provider chain and attribution; extraction schema. |
+| `lib/ai.ts` | Prose writer with provider chain and attribution; extraction schema with dates. |
 | `lib/health.ts` | Learning loop: usage → explainable importance → ranking boost + renewal priority. |
-| `lib/store.ts` | Local projection (people, facts, commitments, users, keys, usage, audit). |
-| `app/api/mcp` | Read-only MCP server scoped to the user's API key. |
+| `lib/store.ts` | Local projection (people, facts with lifecycle, commitments, users, keys, usage, audit). |
+| `app/api/mcp` | Scoped MCP server: read tools plus `capture_memory`, all keyed to one user. |
 | `app/api/health` | Proof surface: Walrus, Tatum onchain verification, writer status, counts. |
 
 ### Data flow and boundaries
@@ -322,7 +354,7 @@ degradation is **visible**, never silent.
 ```bash
 pnpm dev            # dev server
 pnpm typecheck      # strict TypeScript
-pnpm test           # 82 unit tests (hermetic, no network)
+pnpm test           # 112 unit tests (hermetic, no network)
 pnpm lint           # eslint
 ```
 
@@ -330,7 +362,9 @@ pnpm lint           # eslint
 
 ```bash
 pnpm test              # unit tests
-pnpm verify:e2e        # 28 checks over the real product path (live Walrus)
+pnpm verify:e2e        # 33 checks over the real product path (live Walrus)
+pnpm verify:rebuild    # capture → correct → forget → delete projection → rebuild from Walrus
+pnpm eval:recall       # 50-question recall evaluation over the demo memory
 pnpm memwal:verify     # Walrus round-trip: health → blob → recall
 pnpm memwal:durability # blobs owned onchain; recall survives losing the index
 pnpm memwal:analyze    # measured comparison: analyze() vs our extraction
@@ -396,10 +430,26 @@ Honest status of every claim in this README.
 | Per-user namespace isolation | **Real** | `pnpm verify:e2e` (isolation section) |
 | Agent reads the same blobs | **Real** | Native Walrus MCP; `docs/ops-agent.md` |
 | Durability: recall without local index | **Real** | `pnpm memwal:durability` |
+| Durability: workspace rebuild | **Real** | `pnpm verify:rebuild`; people/facts/follow-ups restored, forgotten memory stays gone |
 | Onchain verification (Tatum) | **Real, live, externally verifiable** | `pnpm tatum:verify`; Sui explorer link in UI |
 | Agent delegation onchain | **Real, live** | Delegate key shown as registered on the MemWalAccount |
 | Storage expiry | **Real, onchain** | `end_epoch` 55 → 2027-05-04 (196 days at time of writing) |
 | Learning loop (importance, ranking) | **Real** | Memory Health panel; `tests/health.test.ts` |
+| Correct / supersede a belief | **Real** | Person page: edit a fact or Correct a memory; `pnpm verify:e2e` lifecycle section |
+| Forget a memory | **Real** | Person page / recent memories: Forget; `tests/lifecycle.test.ts` |
+| Duplicate-person merge | **Real** | Person page suggestion; `tests/lifecycle.test.ts` |
+| Canonical current facts | **Real** | Ask "where does Sarah work now?" after a correction; stale source hidden |
+| Absolute dates | **Real** | `tests/lifecycle.test.ts`; fact chips show the parsed date |
+| Attention inbox + Daily Brief | **Real** | Workspace right column; `tests/attention.test.ts`; MCP `get_attention` |
+| Context-aware follow-up drafts | **Real** | Drafts reference the person's company, role, and open promise |
+| Useful / Wrong / Outdated feedback | **Real** | Citation buttons; `tests/feedback.test.ts`; wrong/outdated remove the memory from recall |
+| Consolidation to Walrus | **Real** | Person page "Consolidate memory"; brief gets its own blob id; `tests/feedback.test.ts` |
+| Rebuild workspace from Walrus | **Real** | `pnpm verify:rebuild`; workspace "Rebuild" button; lifecycle manifests keep tombstones |
+| Scoped MCP write | **Real** | `capture_memory` tool; `tests/mcp.test.ts` |
+| Per-memory provenance | **Real** | Person timeline → Provenance: blob id, Sui object, certified epoch, storage window |
+| 50-question recall eval | **50/50 on the demo set** | `pnpm eval:recall`; `docs/eval-recall-report.md`; 100% citation presence, 2.3s median |
+| Mobile capture surface | **Real** | `/capture`; installable manifest + share target; browser voice input |
+| "What Dejavu learned" | **Real** | Memory Health panel: useful/wrong/outdated counts and most-useful memories |
 | Prose writer | **Real**, with a visible fallback chain | "written by …" on every answer; `/api/health` |
 | Demo data | **Real captures** | "Load the demo story" runs the real pipeline |
 | `AI_PROVIDER=mock` mode | **Simulated** | Dev-only deterministic extractor/embedder; never presented as the real path |
@@ -423,7 +473,7 @@ onchain panel says *unavailable* rather than pretending.
   depends on the server mapping an authenticated session to the correct
   namespace — stated plainly because it matters.
 - **API keys** (for MCP) are stored as SHA-256 hashes with a display prefix; the
-  raw key is shown once. Read-only and scoped to one user.
+  raw key is shown once. Scoped to one user: read tools plus one capture tool.
 - **Sessions** are signed HS256 JWTs in `httpOnly`, `sameSite=lax`, `secure`
   cookies.
 
@@ -468,11 +518,27 @@ onchain panel says *unavailable* rather than pretending.
 
 ### Current limitations
 
-- **Text only.** No images, voice, or file ingestion.
+- **Text only.** Voice is transcribed in the browser into text; there is no
+  image or file ingestion.
+- **The 50-question eval is demo-specific.** It is an honest regression set for
+  the seeded story, not a general benchmark. Results are in
+  `docs/eval-recall-report.md`.
+- **PWA, not a native app.** Installable and share-target capable, but there is
+  no App Store build and no offline write queue.
 - **No multi-turn conversation.** Dejavu answers each question independently;
   the thread in the UI is display-only.
-- **No edit or delete UI.** Memories are append-only; Walrus blobs are immutable
-  by design, so deletion needs an explicit product decision.
+- **Corrections create new blobs.** Walrus blobs are immutable, so a correction
+  writes a new version and tombstones the old one in the projection. The old
+  ciphertext remains onchain — that is durability, not a delete guarantee.
+- **Date parsing covers common expressions.** "Yesterday", "by Friday",
+  "April 12", "March 2027", "in 3 weeks" and ISO dates are handled; unusual
+  natural-language dates may still fall back to the capture time.
+- **Rebuild depends on relayer discovery.** `restore()` and broad recall can
+  miss blobs beyond the relayer's owner-wide candidate cap. The verifier warns
+  instead of pretending every namespace is recoverable.
+- **Tombstone manifests are forward-only.** Forgets/corrections from now on
+  write a lifecycle manifest; memories retired before that mechanism existed
+  cannot be distinguished from active ones after a full rebuild.
 - **Storage lifetime is ~196 days** at the relayer's current 15-epoch purchase.
   Expiry is surfaced, but renewal is manual.
 - **Free-tier constraints.** Tatum: 3 RPS, 100K credits, no batch JSON-RPC.

@@ -50,6 +50,14 @@ export const DEMO_STORIES: DemoStory[] = [
     label: "David Okafor — CTO (intro-mention trap)",
     text: "Had lunch with David Okafor, CTO at Paystack. He's scaling the eng org from 20 to 60 and worried about incident review culture. I promised to connect him with a friend to compare notes on on-call.",
   },
+  {
+    label: "Nadia Rahman — no promise (cold-relationship demo)",
+    text: "Met Nadia Rahman at the design dinner. She's a product lead at Notion, into ceramics and trail running. We talked about design systems and her move from consulting.",
+  },
+  {
+    label: "Passport renewal — dated fact",
+    text: "My passport expires in 7 weeks. Need to renew it before the trip to Lisbon.",
+  },
 ];
 
 /** The questions that make the demo land: paraphrase, follow-up, abstention. */
@@ -70,8 +78,8 @@ export const DEMO_ABSTENTION_QUESTION =
 export async function seedDemoMemories(
   userId: string,
 ): Promise<{ captured: number; people: number; blobs: number }> {
-  const { captureMemory } = await import("./memory");
-  const { loadStore } = await import("./store");
+  const { captureMemory, correctFact } = await import("./memory");
+  const { loadStore, saveStore } = await import("./store");
 
   let captured = 0;
   for (const story of DEMO_STORIES) {
@@ -84,8 +92,9 @@ export async function seedDemoMemories(
     }
   }
 
-  // Age the two oldest follow-ups so the Today feed has overdue items.
   const store = loadStore();
+
+  // Age the two oldest follow-ups so the Attention feed has overdue items.
   const ids = store.commitments
     .filter((c) => c.user_id === userId)
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
@@ -96,8 +105,40 @@ export async function seedDemoMemories(
     for (const c of store.commitments) {
       if (ids.includes(c.id)) c.due_at = past;
     }
-    const { saveStore } = await import("./store");
-    saveStore(store);
+  }
+
+  // Nadia has no promise, so she demonstrates the cold-relationship branch.
+  const nadia = store.people.find(
+    (p) => p.user_id === userId && p.name.toLowerCase().includes("nadia"),
+  );
+  if (nadia) {
+    nadia.last_interaction_at = new Date(
+      Date.now() - 35 * 86400_000,
+    ).toISOString();
+    nadia.updated_at = new Date().toISOString();
+  }
+  saveStore(store);
+
+  // Show the lifecycle on the demo account: Sarah's employer changes, so the
+  // old value becomes history and the Attention feed has a real "changed" item.
+  const sarah = loadStore().people.find(
+    (p) => p.user_id === userId && p.name === "Sarah Chen",
+  );
+  const sarahCompany = sarah
+    ? loadStore().facts.find(
+        (f) =>
+          f.user_id === userId &&
+          f.person_id === sarah.id &&
+          f.key === "company" &&
+          f.status === "current",
+      )
+    : null;
+  if (sarahCompany && sarahCompany.value.toLowerCase() !== "linear") {
+    try {
+      await correctFact(userId, sarahCompany.id, "Linear");
+    } catch (err) {
+      console.error("[demo] correction failed:", err);
+    }
   }
 
   const final = loadStore();

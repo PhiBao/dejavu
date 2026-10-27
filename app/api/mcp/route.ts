@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateApiKey } from "@/lib/api-keys";
 import {
+  captureMemory,
   getPerson,
   getPersonFacts,
   getPersonMemories,
@@ -9,14 +10,17 @@ import {
   recall,
   recentMemories,
 } from "@/lib/memory";
+import { getAttentionFeed } from "@/lib/attention";
+import { userActionLimiter } from "@/lib/rate-limit";
 
 /**
- * Dejavu's own MCP server — a read-only Model Context Protocol endpoint.
+ * Dejavu's own MCP server — a scoped Model Context Protocol endpoint.
  *
  * A signed-in Dejavu user generates an API key (in the app), then any MCP
  * client (Claude Code, Cursor, ...) connects here with `Authorization: Bearer
- * <key>` and queries THEIR memory. Every tool is scoped by the key's
- * user_id, so a key can never read another user's data.
+ * <key>` and reads or captures THEIR memory. Every tool is scoped by the key's
+ * user_id, so a key can never touch another user's data. `capture_memory` is
+ * the only write; it runs the same extraction → Walrus pipeline as the app.
  *
  * Memory content lives in Walrus Memory (per-user namespace); structure
  * (people, facts, commitments) lives in the local projection. These tools
@@ -92,6 +96,27 @@ const READ_TOOLS: Tool[] = [
     description:
       "Get the user's Today feed: open follow-ups that are due or overdue, with a draft reconnect message for each.",
     inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "get_attention",
+    description:
+      "Get the agent's Attention feed: a daily brief plus overdue promises, cold relationships, upcoming dated facts, and recently changed details. Use this when the user asks what needs attention or what they should do next.",
+    inputSchema: { type: "object", properties: {} },
+  },
+  {
+    name: "capture_memory",
+    description:
+      "Write a new memory into the user's Walrus namespace through the real capture pipeline. Use this when the user tells the agent something worth remembering from another tool or session.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: {
+          type: "string",
+          description: "The memory to save, in the user's own words",
+        },
+      },
+      required: ["text"],
+    },
   },
   {
     name: "recent_memories",
@@ -198,6 +223,32 @@ async function handleCall(
             )
             .join("\n") || "(nothing due)";
         return textResult(id, text);
+      }
+      case "get_attention": {
+        const feed = await getAttentionFeed(userId);
+        const lines = feed.items
+          .map(
+            (item) =>
+              `- [${item.kind}${item.personName ? ` · ${item.personName}` : ""}] ${item.title}: ${item.detail}${item.draftMessage ? `\n  draft: "${item.draftMessage}"` : ""}`,
+          )
+          .join("\n");
+        return textResult(
+          id,
+          `Daily brief: ${feed.brief}${lines ? `\n\n${lines}` : ""}`,
+        );
+      }
+      case "capture_memory": {
+        const text = String(args.text ?? "").trim();
+        if (!text) return mcpError(id, "text is required");
+        if (text.length > 4000) return mcpError(id, "text is too long (max 4000)");
+        if (!userActionLimiter.check(userId)) {
+          return mcpError(id, "rate limited — try again in a moment");
+        }
+        const res = await captureMemory(userId, text);
+        return textResult(
+          id,
+          `${res.summary}\nperson: ${res.person?.name ?? "none"}\nfacts: ${res.factsAdded}\nfollow-ups: ${res.commitmentsAdded}\nwalrus: ${res.walrusState}${res.memory.walrus_blob_id ? ` (${res.memory.walrus_blob_id})` : ""}`,
+        );
       }
       case "recent_memories": {
         const limit = Math.min(Math.max(Number(args.limit ?? 10) || 10, 1), 25);

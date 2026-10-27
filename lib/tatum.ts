@@ -539,6 +539,22 @@ export interface OnchainSummary {
   explorer: { account: string; system: string };
 }
 
+/** Per-blob onchain provenance for a set of blob ids (cached upstream). */
+export async function getBlobProvenance(
+  blobIds: string[],
+): Promise<Map<string, BlobOnchain>> {
+  if (!isTatumConfigured()) return new Map();
+  const account = await getMemWalAccount();
+  if (!account) return new Map();
+  const owned = await listOwnedBlobs(account.owner);
+  const out = new Map<string, BlobOnchain>();
+  for (const id of blobIds) {
+    const blob = owned.get(id);
+    if (blob) out.set(id, blob);
+  }
+  return out;
+}
+
 /**
  * Cross-check the app's memories against chain state in one call.
  * Used by /api/health and the Memory Health panel.

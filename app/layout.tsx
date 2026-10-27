@@ -1,5 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import { PwaRegister } from "@/components/PwaRegister";
 import "./globals.css";
 
 const inter = Inter({
@@ -9,7 +10,21 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "Dejavu — a memory companion",
-  description: "A memory companion for everything worth remembering — people, notes, promises — with portable, verifiable memory on Walrus.",
+  description:
+    "A memory companion for everything worth remembering — people, notes, promises — with portable, verifiable memory on Walrus.",
+  manifest: "/manifest.webmanifest",
+  applicationName: "Dejavu",
+  appleWebApp: {
+    capable: true,
+    title: "Dejavu",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0f1115",
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
@@ -19,7 +34,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={inter.variable}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <PwaRegister />
+      </body>
     </html>
   );
 }

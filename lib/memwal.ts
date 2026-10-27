@@ -161,16 +161,31 @@ export async function walrusRecall(
   }
 }
 
+export interface WalrusRestoreResult {
+  restored: number;
+  skipped: number;
+  failed: number;
+  total: number;
+  /** True when the relayer knows the restore was incomplete (cap or transient). */
+  truncated: boolean;
+}
+
 /** Rebuild the relayer index for a user's namespace from Walrus blobs. */
 export async function walrusRestore(
   userId: string,
   limit = 50,
-): Promise<{ restored: number; total: number } | null> {
+): Promise<WalrusRestoreResult | null> {
   const c = getClient();
   if (!c) return null;
   try {
     const res = await c.restore(userNamespace(userId), limit);
-    return { restored: res.restored, total: res.total };
+    return {
+      restored: res.restored,
+      skipped: res.skipped ?? 0,
+      failed: res.failed ?? 0,
+      total: res.total,
+      truncated: res.truncated ?? false,
+    };
   } catch (err) {
     log.warn("walrus_restore_failed", {
       error: err instanceof Error ? err.message : String(err),

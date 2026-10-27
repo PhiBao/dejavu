@@ -21,6 +21,8 @@
     "memwal:analyze": "tsx scripts/verify-analyze.ts",
     "judge:verify": "tsx scripts/verify-judge.ts",
     "verify:e2e": "tsx scripts/verify-e2e.ts",
+    "verify:rebuild": "tsx scripts/verify-rebuild.ts",
+    "eval:recall": "tsx scripts/eval-recall.ts",
     "verify": "pnpm typecheck && pnpm test && pnpm verify:e2e && pnpm memwal:durability",
     "mcp:verify": "tsx scripts/mcp-verify.ts",
     "tatum:verify": "tsx scripts/verify-tatum.ts"

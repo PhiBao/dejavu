@@ -6,7 +6,7 @@ point of the whole entry:
 | | Path | What it proves |
 |---|---|---|
 | **1** | **[Walrus Memory's own MCP server](#path-1--walrus-memorys-native-mcp-recommended)** — first-party `memwal_*` tools | An agent reads, with **zero re-entry**, the exact memories the **website** wrote. Portability made literal. |
-| **2** | **[Dejavu's own MCP server](#path-2--recalls-mcp-server)** (`/api/mcp`) | A product surface: read-only, per-user scoped, pre-synthesized answers and a Today feed. |
+| **2** | **[Dejavu's own MCP server](#path-2--recalls-mcp-server)** (`/api/mcp`) | A product surface: per-user scoped read tools, `capture_memory` write, pre-synthesized answers, an Attention feed, and a Today feed. |
 
 Path 1 is the stronger demo and uses **first-party Walrus tooling**. Path 2 is
 what a shipped product would expose to a paying user's own agent.
@@ -63,10 +63,11 @@ survives the session, the app, and the vendor.
 
 ## Path 2 — Dejavu's MCP server
 
-Dejavu's own MCP server (`/api/mcp`) is a product surface: read-only,
-auto-scoped to the signed-in user's key, and it returns *synthesized* answers
-plus the Today feed rather than raw tools. Use it when you want the product's
-judgment, not just its blobs.
+Dejavu's own MCP server (`/api/mcp`) is a product surface: auto-scoped to the
+signed-in user's key, with read tools, `capture_memory`, *synthesized* answers,
+an Attention feed, and the Today feed. Use it when you want the product's
+judgment, not just its blobs — and to let another agent write into the same
+namespace.
 
 > What you need: **a signed-in Dejavu account** and **one API key** you generate
 > yourself. That's it — no AWS, no database, no other setup.
@@ -195,9 +196,10 @@ Once connected, try natural-language prompts (no SQL needed):
 | `403` / tools don't appear | Key was revoked | Generate a new key |
 | Works locally but not from a hosted client | Key copied with a trailing space | Regenerate and paste cleanly |
 
-> The endpoint is **read-only**: every tool is scoped to your `user_id` by the
-> key. Keys store only a SHA-256 hash — never the raw secret. Revoke a key
-> anytime in the app.
+> Every tool is scoped to your `user_id` by the key. The read tools cannot see
+> another user's memory; `capture_memory` writes into the same per-user Walrus
+> namespace as the app. Keys store only a SHA-256 hash — never the raw secret.
+> Revoke a key anytime in the app.
 
 ---
 

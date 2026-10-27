@@ -23,10 +23,12 @@ describe("extractMemory (mock path)", () => {
     const r = await extractMemory(
       "Met Sarah — she's hiring senior React engineers.",
     );
-    expect(r.facts).toContainEqual({
-      attribute: "hiring_for",
-      value: "senior React engineers",
-    });
+    expect(r.facts).toContainEqual(
+      expect.objectContaining({
+        attribute: "hiring_for",
+        value: "senior React engineers",
+      }),
+    );
   });
 
   it("extracts a commitment from a promise phrase", async () => {

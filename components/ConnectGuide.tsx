@@ -261,8 +261,9 @@ export function ConnectGuide({
         </section>
 
         <footer className="mt-12 border-t border-ink/10 pt-4 text-xs text-ink/40">
-          Your key only ever reads <em>your</em> memories. It can&apos;t change
-          anything, and you can revoke it anytime in the workspace.
+          Your key is scoped to <em>your</em> memories. It can read them and
+          capture new ones, but it can never touch another user&apos;s data — and
+          you can revoke it anytime in the workspace.
         </footer>
 
         {/* The stronger path: Walrus Memory's own MCP tools */}

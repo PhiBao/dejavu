@@ -2,6 +2,7 @@ import { z } from "zod";
 import { env, isMockAI } from "./env";
 import { findStrongPersonSpans } from "./judge";
 import { log } from "./log";
+import { dateForFact, dueDateFromText, eventDateFromText, parseModelDate } from "./dates";
 import type { ExtractedMemory, MemoryKind } from "./types";
 
 /**
@@ -212,11 +213,19 @@ const extractionSchema = z.object({
   company: z.string().nullable(),
   location: z.string().nullable(),
   kind: z.enum(["note", "meeting", "message", "call"]),
-  facts: z.array(z.object({ attribute: z.string(), value: z.string() })),
+  occurredAt: z.string().nullable().optional(),
+  facts: z.array(
+    z.object({
+      attribute: z.string(),
+      value: z.string(),
+      date: z.string().nullable().optional(),
+    }),
+  ),
   commitments: z.array(
     z.object({
       description: z.string(),
       dueInDays: z.number().nullable(),
+      dueDate: z.string().nullable().optional(),
     }),
   ),
 });
@@ -257,16 +266,18 @@ Return ONLY a JSON object with this exact shape:
   "company": string | null,
   "location": string | null,
   "kind": "note" | "meeting" | "message" | "call",
-  "facts": [ { "attribute": string, "value": string } ],   // durable details worth recalling later
-  "commitments": [ { "description": string, "dueInDays": number | null } ]  // things the USER should do; dueInDays = when, or null
+  "occurredAt": string | null,       // YYYY-MM-DD when the note states when it happened ("yesterday", "last Friday"); null otherwise
+  "facts": [ { "attribute": string, "value": string, "date": string | null } ],   // date = YYYY-MM-DD when this fact is date-bearing (expiry, deadline, birthday)
+  "commitments": [ { "description": string, "dueInDays": number | null, "dueDate": string | null } ]  // things the USER should do; dueDate = YYYY-MM-DD when stated
 }
 Rules:
-- Extract only what is stated or clearly implied. Do NOT invent facts.
+- Extract only what is stated or clearly implied. Do NOT invent facts or dates.
 - personName is null when the note is not about a specific person. That is normal: facts still belong to the note.
 - headline MUST be the person's current role/title exactly as stated in the note (e.g. if the note says "runs growth", the headline is about growth — never upgrade it to "Founder", "CEO", or any title not in the text).
 - company MUST be just the organization name (e.g. "MIT", not "MIT working on retrieval systems").
 - Every word in headline/company/fact values should appear in (or be a direct shortening of) the note text.
-- attributes should be short, GENERIC snake_case keys (e.g. "role", "interest", "hiring_for", "deadline", "amount", "trip_month") — never invented proper nouns from the note.
+- attributes should be short, GENERIC snake_case keys (e.g. "role", "interest", "hiring_for", "passport_expiry", "amount", "trip_month") — never invented proper nouns from the note.
+- Dates: use ISO YYYY-MM-DD. Resolve relative dates against the "Today is" date in the user message. If no date is stated, use null — never guess.
 - Output JSON only, no prose.`;
 
 // --- Public API -----------------------------------------------------------
@@ -274,10 +285,17 @@ Rules:
 export async function extractMemory(text: string): Promise<ExtractedMemory> {
   if (isMockAI()) return { ...mockExtract(text), writtenBy: "local rules" };
   try {
-    const { text: raw, provider, model } = await chatJSON(EXTRACT_SYSTEM, text);
+    const today = new Date().toISOString().slice(0, 10);
+    const { text: raw, provider, model } = await chatJSON(
+      EXTRACT_SYSTEM,
+      `Today is ${today}.\n\n${text}`,
+    );
     const parsed = extractionSchema.safeParse(safeParseJSON(raw));
     if (parsed.success) {
-      return { ...parsed.data, writtenBy: `${provider} · ${model}` };
+      return {
+        ...normalizeExtraction(text, parsed.data),
+        writtenBy: `${provider} · ${model}`,
+      };
     }
     // Model returned unexpected shape — fall back to a minimal capture so we
     // NEVER lose the user's raw memory.
@@ -288,10 +306,49 @@ export async function extractMemory(text: string): Promise<ExtractedMemory> {
   }
 }
 
-const RECALL_SYSTEM = `You are the user's relationship memory. Answer the user's question using ONLY the provided memories.
+/**
+ * Dates are decided in code. The model's date fields are accepted only as a
+ * fallback and only when the year it names actually appears in the note —
+ * a plausible-looking invented date is worse than no date.
+ */
+function normalizeExtraction(
+  text: string,
+  data: z.infer<typeof extractionSchema>,
+): ExtractedMemory {
+  const deterministicEvent = eventDateFromText(text);
+  const modelEvent = parseModelDate(data.occurredAt);
+  const occurredAt =
+    deterministicEvent ??
+    (modelEvent && text.includes(modelEvent.slice(0, 4)) ? modelEvent : null);
+
+  const deterministicDue = dueDateFromText(text);
+  const facts = data.facts.map((f) => ({
+    attribute: f.attribute,
+    value: f.value,
+    date:
+      dateForFact(text, f.attribute) ??
+      (() => {
+        const modelDate = parseModelDate(f.date);
+        return modelDate && text.includes(modelDate.slice(0, 4)) ? modelDate : null;
+      })(),
+  }));
+
+  const commitments = data.commitments.map((c) => {
+    const modelDate = parseModelDate(c.dueDate);
+    const dueDate =
+      deterministicDue ??
+      (modelDate && text.includes(modelDate.slice(0, 4)) ? modelDate : null);
+    return { ...c, dueDate };
+  });
+
+  return { ...data, occurredAt, facts, commitments };
+}
+
+const RECALL_SYSTEM = `You are the user's relationship memory. Answer the user's question using ONLY the provided memories and current facts.
 - Be concise and specific.
+- CURRENT FACTS are the user's latest known values. They override any conflicting older memory. If a current fact answers the question, use it and never repeat the outdated value.
 - Consider ALL the provided memories, not just the first one.
-- Counting questions ("how many founders..."): count distinct people across ALL memories whose stated role matches, then name them. If only some match, say so explicitly (e.g. "One — Sarah Chen. Tomás runs growth, not a founder per your notes.").
+- Counting questions ("how many founders..."): count ONLY distinct people whose stated role matches, then name them. Never include a non-matching person in the number — if someone is a partner or runs growth, say "One — Sarah Chen" and mention the non-matching person separately (e.g. "Marcus is a partner, not a founder").
 - Yes/no questions ("is X a founder?"): answer from what the memories state. If they don't say it, say what they DO say about X instead of claiming ignorance of X entirely (e.g. "Your notes don't say Tomás founded anything — they say he runs growth at Loop.").
 - If the memories truly contain nothing relevant to the question, say "I don't have a memory of that yet." Do NOT guess or invent.
 - Refer to people by name. Do not mention memory IDs.`;
@@ -345,11 +402,19 @@ export interface SynthesizedAnswer {
   writtenBy: string;
 }
 
+export interface CurrentFactContext {
+  personName: string | null;
+  attribute: string;
+  value: string;
+  absoluteDate: string | null;
+}
+
 export async function synthesizeRecall(
   question: string,
   memories: { id: string; personName: string | null; content: string; occurredAt: string }[],
+  currentFacts: CurrentFactContext[] = [],
 ): Promise<SynthesizedAnswer> {
-  if (memories.length === 0) {
+  if (memories.length === 0 && currentFacts.length === 0) {
     return { text: ABSTAIN_TEXT, writtenBy: "no context" };
   }
   if (isMockAI()) {
@@ -362,7 +427,16 @@ export async function synthesizeRecall(
           `[#${i + 1}] (${m.personName ?? "unknown"}, ${m.occurredAt}): ${m.content}`,
       )
       .join("\n");
-    const user = `Memories:\n${context}\n\nQuestion: ${question}`;
+    const facts =
+      currentFacts.length > 0
+        ? `\n\nCurrent facts (authoritative):\n${currentFacts
+            .map(
+              (f) =>
+                `- ${f.personName ?? "the user"} — ${f.attribute.replace(/_/g, " ")}: ${f.value}${f.absoluteDate ? ` (dated ${f.absoluteDate})` : ""}`,
+            )
+            .join("\n")}`
+        : "";
+    const user = `Memories:\n${context}${facts}\n\nQuestion: ${question}`;
     const { text, provider, model } = await chatJSON(RECALL_SYSTEM, user);
     const trimmed = text.trim();
     if (!trimmed) {
@@ -372,6 +446,99 @@ export async function synthesizeRecall(
   } catch (err) {
     console.error("[ai] synthesizeRecall failed, degrading:", errMsg(err));
     return { text: mockRecall(question, memories), writtenBy: "local rules" };
+  }
+}
+
+// --- Consolidation ---------------------------------------------------------
+
+export interface BriefInput {
+  personName: string;
+  headline: string | null;
+  company: string | null;
+  location: string | null;
+  facts: { attribute: string; value: string; absoluteDate: string | null }[];
+  memories: { content: string; occurredAt: string }[];
+  commitments: { description: string; dueAt: string | null }[];
+}
+
+/**
+ * Deterministic fallback for a person brief. Every sentence is grounded in a
+ * fact, an open promise, or a memory the user actually captured.
+ */
+export function buildPersonBrief(input: BriefInput): string {
+  const lines: string[] = [];
+  const role = [input.headline, input.company].filter(Boolean).join(" · ");
+  lines.push(`${input.personName}${role ? ` — ${role}` : ""}.`);
+  if (input.location) lines.push(`Based in ${input.location}.`);
+
+  const facts = input.facts
+    .filter((f) => !["company", "role", "headline", "location"].includes(f.attribute))
+    .slice(0, 6)
+    .map(
+      (f) =>
+        `${f.attribute.replace(/_/g, " ")}: ${f.value}${f.absoluteDate ? ` (${f.absoluteDate})` : ""}`,
+    );
+  if (facts.length > 0) lines.push(`Current details — ${facts.join("; ")}.`);
+
+  if (input.commitments.length > 0) {
+    lines.push(
+      `Open follow-ups: ${input.commitments
+        .slice(0, 3)
+        .map((c) => c.description)
+        .join("; ")}.`,
+    );
+  }
+  if (input.memories.length > 0) {
+    const latest = input.memories[0]!;
+    const snippet = latest.content.replace(/\s+/g, " ").slice(0, 180);
+    lines.push(`Most recent note (${latest.occurredAt.slice(0, 10)}): ${snippet}`);
+  }
+  return lines.join(" ");
+}
+
+const BRIEF_SYSTEM = `You write a compact canonical brief about one person from the user's memory.
+- Use ONLY the provided current facts, open follow-ups, and recent memories.
+- Current facts are authoritative; never repeat a superseded value.
+- 3-5 sentences. No bullet points. No invented details. No memory IDs.
+- Start with the person's name and current role/company.`;
+
+export async function synthesizePersonBrief(
+  input: BriefInput,
+): Promise<{ text: string; writtenBy: string }> {
+  const fallback = buildPersonBrief(input);
+  if (isMockAI()) return { text: fallback, writtenBy: "local rules" };
+  try {
+    const facts = input.facts
+      .map(
+        (f) =>
+          `- ${f.attribute.replace(/_/g, " ")}: ${f.value}${f.absoluteDate ? ` (${f.absoluteDate})` : ""}`,
+      )
+      .join("\n");
+    const commitments = input.commitments
+      .map((c) => `- ${c.description}${c.dueAt ? ` (due ${c.dueAt.slice(0, 10)})` : ""}`)
+      .join("\n");
+    const memories = input.memories
+      .slice(0, 8)
+      .map((m) => `- (${m.occurredAt.slice(0, 10)}) ${m.content}`)
+      .join("\n");
+    const user = `Person: ${input.personName}
+Headline: ${input.headline ?? "unknown"}
+Company: ${input.company ?? "unknown"}
+Location: ${input.location ?? "unknown"}
+
+Current facts:
+${facts || "(none)"}
+
+Open follow-ups:
+${commitments || "(none)"}
+
+Recent memories:
+${memories || "(none)"}`;
+    const { text, provider, model } = await chatJSON(BRIEF_SYSTEM, user);
+    return { text: text.trim() || fallback, writtenBy: `${provider} · ${model}` };
+  } catch (err) {
+    console.error("[ai] synthesizePersonBrief failed, using local brief:", errMsg(err));
+    return { text: fallback, writtenBy: "local rules" };
   }
 }
 
@@ -400,17 +567,49 @@ function mockExtract(text: string): ExtractedMemory {
           ? "message"
           : "note";
 
-  const facts: { attribute: string; value: string }[] = [];
+  const facts: { attribute: string; value: string; date: string | null }[] = [];
   const hiring = text.match(
     /\b(?:hiring|recruiting|looking for)(?:\s+for)?\s+([A-Za-z0-9 ,\-]{3,40})/i,
   );
-  if (hiring?.[1]) facts.push({ attribute: "hiring_for", value: hiring[1].trim() });
+  if (hiring?.[1]) {
+    facts.push({ attribute: "hiring_for", value: hiring[1].trim(), date: null });
+  }
   const interest = text.match(
     /(?:into|interested in|likes|loves|into)\s+([A-Za-z0-9 ,\-]{3,40})/i,
   );
-  if (interest?.[1]) facts.push({ attribute: "interest", value: interest[1].trim() });
+  if (interest?.[1]) {
+    facts.push({ attribute: "interest", value: interest[1].trim(), date: null });
+  }
 
-  const commitments: { description: string; dueInDays: number | null }[] = [];
+  // Date-bearing facts: "my passport expires in March 2027". The attribute is
+  // derived from the subject so a later passport note supersedes this one
+  // instead of creating a second, conflicting expiry.
+  const expiry = text.match(
+    /\b([A-Za-z][A-Za-z ]{1,24}?)\s+(?:expires?|expiry|renewal)\b/i,
+  );
+  const datePhrase = text.match(
+    /\b(?:expires?|expiry|renewal)\s+(?:in|on|by|before)?\s*((?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{4}|(?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\s+\d{1,2}|\d{4}-\d{2}-\d{2}|\d+\s+(?:days?|weeks?|months?|years?)|next\s+(?:week|month|year)|tomorrow|today)/i,
+  );
+  if (expiry?.[1] && datePhrase?.[1]) {
+    const subject = expiry[1]
+      .trim()
+      .replace(/^(my|the|our)\s+/i, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_");
+    const attribute = `${subject}_expiry`;
+    facts.push({
+      attribute,
+      value: datePhrase[1].trim(),
+      date: dateForFact(text, attribute),
+    });
+  }
+
+  const dueDate = dueDateFromText(text);
+  const commitments: {
+    description: string;
+    dueInDays: number | null;
+    dueDate: string | null;
+  }[] = [];
   const promise = text.match(
     /(?:promised?|said i'?d|need to|should|will|must|owe|follow up|intro)\s+([A-Za-z0-9 ,'\-]{4,60})/i,
   );
@@ -418,17 +617,26 @@ function mockExtract(text: string): ExtractedMemory {
     const desc = promise[1].trim();
     // Don't create a follow-up that just echoes the person name.
     if (desc && desc.toLowerCase() !== (personName ?? "").toLowerCase()) {
-      commitments.push({ description: desc, dueInDays: 3 });
+      commitments.push({
+        description: desc,
+        dueInDays: dueDate ? null : 3,
+        dueDate,
+      });
     }
   }
 
-  const company = companyMatch?.[1]?.trim() ?? null;
+  const company =
+    companyMatch?.[1]?.trim().replace(/[.,;:!?]+$/, "") ?? null;
+  if (company) {
+    facts.push({ attribute: "company", value: company, date: null });
+  }
   return {
     personName,
     headline: company ? `at ${company}` : null,
     company,
     location: null,
     kind,
+    occurredAt: eventDateFromText(text),
     facts,
     commitments,
   };

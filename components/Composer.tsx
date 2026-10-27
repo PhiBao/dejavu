@@ -5,6 +5,7 @@ import Link from "next/link";
 import { captureAction, recallAction, routeAction } from "@/app/actions";
 import type { RecallAnswer } from "@/lib/types";
 import { RichText } from "./RichText";
+import { CitationFeedback } from "./CitationFeedback";
 
 type Mode = "capture" | "recall";
 
@@ -308,6 +309,7 @@ function ThreadEntry({ entry }: { entry: Entry }) {
                   {c.score.toFixed(2)}
                   {c.verified === "verified" ? " ✓" : ""}
                 </span>
+                <CitationFeedback memoryId={c.memoryId} question={entry.text} />
               </div>
             ))}
           </div>

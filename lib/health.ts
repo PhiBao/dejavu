@@ -6,8 +6,11 @@ import {
   type BlobOnchain,
 } from "./tatum";
 import {
+  feedbackMap,
+  feedbackTotals,
   loadStore,
   memoryUsageMap,
+  type FeedbackCounts,
   type MemoryUsage,
 } from "./store";
 import type { Memory } from "./types";
@@ -30,12 +33,16 @@ import type { Memory } from "./types";
 
 export interface MemoryHealthRow {
   memoryId: string;
+  personId: string | null;
   personName: string | null;
   snippet: string;
   importance: number;
   reasons: string[];
   hits: number;
   lastHitAt: string | null;
+  useful: number;
+  wrong: number;
+  outdated: number;
   blobId: string | null;
   endEpoch: number | null;
   daysToExpiry: number | null;
@@ -47,7 +54,9 @@ export interface MemoryHealth {
   epoch: number | null;
   rows: MemoryHealthRow[];
   topRelied: MemoryHealthRow[];
+  topUseful: MemoryHealthRow[];
   atRisk: MemoryHealthRow[];
+  feedback: FeedbackCounts;
   /** One line a human can act on. */
   summary: string;
   verifiedBlobs: number;
@@ -76,8 +85,14 @@ export function importanceScore(input: {
   createdAt: string;
   hasPerson: boolean;
   hasCommitment: boolean;
+  useful?: number;
+  wrong?: number;
+  outdated?: number;
 }): { score: number; reasons: string[] } {
   const reasons: string[] = [];
+  const useful = input.useful ?? 0;
+  const wrong = input.wrong ?? 0;
+  const outdated = input.outdated ?? 0;
 
   const reliance = Math.min(1, input.hits / 5);
   if (input.hits > 0) {
@@ -89,10 +104,22 @@ export function importanceScore(input: {
   if (recency >= 0.5) reasons.push("used recently");
   if (input.hasPerson) reasons.push("tied to a person");
   if (input.hasCommitment) reasons.push("something you owe");
+  if (useful > 0) {
+    reasons.push(`marked useful ${useful} time${useful === 1 ? "" : "s"}`);
+  }
+  if (wrong > 0) reasons.push("marked wrong");
+  if (outdated > 0) reasons.push("marked outdated");
 
-  const score =
+  const base =
     0.45 * reliance + 0.2 * recency + 0.2 * (input.hasPerson ? 1 : 0) +
     0.15 * (input.hasCommitment ? 1 : 0);
+  // Explicit feedback is a bounded adjustment: it can protect a memory or
+  // lower its priority, but relevance still decides what is retrieved.
+  const quality =
+    Math.min(0.12, useful * 0.04) -
+    Math.min(0.2, wrong * 0.1) -
+    Math.min(0.25, outdated * 0.15);
+  const score = Math.max(0, Math.min(1, base + quality));
   return { score: Math.round(score * 100) / 100, reasons };
 }
 
@@ -105,12 +132,23 @@ export function relianceBoost(hits: number): number {
   return Math.min(0.1, Math.log2(1 + hits) * 0.03);
 }
 
+/**
+ * Explicit "useful" feedback is a stronger signal than an incidental recall,
+ * but still capped so it can only reorder equally relevant memories.
+ */
+export function feedbackBoost(useful: number): number {
+  return Math.min(0.08, useful * 0.03);
+}
+
 export async function computeMemoryHealth(
   userId: string,
 ): Promise<MemoryHealth> {
   const store = loadStore();
-  const memories = store.memories.filter((m) => m.user_id === userId);
+  const memories = store.memories.filter(
+    (m) => m.user_id === userId && m.status === "active",
+  );
   const usage: Map<string, MemoryUsage> = memoryUsageMap(userId);
+  const feedback = feedbackMap(userId);
   const peopleById = new Map(store.people.map((p) => [p.id, p.name]));
   const commitmentMemoryIds = new Set(
     store.commitments
@@ -132,24 +170,32 @@ export async function computeMemoryHealth(
     const hits = use?.hits ?? 0;
     const hasPerson = !!m.person_id;
     const hasCommitment = commitmentMemoryIds.has(m.id);
+    const fb = feedback.get(m.id) ?? { useful: 0, wrong: 0, outdated: 0 };
     const { score, reasons } = importanceScore({
       hits,
       lastHitAt: use?.last_hit_at ?? null,
       createdAt: m.created_at,
       hasPerson,
       hasCommitment,
+      useful: fb.useful,
+      wrong: fb.wrong,
+      outdated: fb.outdated,
     });
     const blob = m.walrus_blob_id ? blobs.get(m.walrus_blob_id) : undefined;
     const days =
       blob && epoch !== null ? daysRemaining(blob.endEpoch, epoch) : null;
     return {
       memoryId: m.id,
+      personId: m.person_id,
       personName: m.person_id ? (peopleById.get(m.person_id) ?? null) : null,
       snippet: m.content.slice(0, 140),
       importance: score,
       reasons,
       hits,
       lastHitAt: use?.last_hit_at ?? null,
+      useful: fb.useful,
+      wrong: fb.wrong,
+      outdated: fb.outdated,
       blobId: m.walrus_blob_id ?? null,
       endEpoch: blob?.endEpoch ?? null,
       daysToExpiry: days,
@@ -163,6 +209,10 @@ export async function computeMemoryHealth(
     .filter((r) => r.hits > 0)
     .sort((a, b) => b.hits - a.hits)
     .slice(0, 3);
+  const topUseful = ranked
+    .filter((r) => r.useful > 0)
+    .sort((a, b) => b.useful - a.useful)
+    .slice(0, 3);
   const atRisk = rows
     .filter((r) => r.atRisk)
     .sort((a, b) => b.importance - a.importance)
@@ -175,7 +225,9 @@ export async function computeMemoryHealth(
     epoch,
     rows: ranked,
     topRelied,
+    topUseful,
     atRisk,
+    feedback: feedbackTotals(userId),
     summary,
     verifiedBlobs,
     totalMemories: rows.length,
