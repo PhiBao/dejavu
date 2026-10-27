@@ -47,8 +47,9 @@ forgetting costs the most); the product is deliberately not limited to them.
    agent using Walrus Memory's own MCP tools. Delete the app's index and it
    still answers.
 3. **It doesn't make things up.** Answers are grounded in retrieved memories,
-   every shown citation is machine-checked, and unknown questions abstain
-   before spending a generation call.
+   every synthesized citation is machine-checked, and unknown questions abstain
+   before spending a generation call. Deterministic current-fact answers are
+   shown without a ✓ badge rather than pretending they were model-verified.
 4. **It stays current.** A correction supersedes the old belief instead of
    sitting beside it; forgotten memories are tombstoned; duplicate people merge
    into one profile. The current value wins in answers.
@@ -134,10 +135,10 @@ app and starts feeling like memory.
 
 ### What is genuinely novel
 
-1. **Answers that are verified, not just grounded.** Every citation is checked
-   by a calibrated judgment against its source; contradicted sources are
-   hidden, and if all fail the answer is withheld. Most RAG demos stop at
-   "here are some chunks".
+1. **Answers that are verified, not just grounded.** Every synthesized citation
+   is checked by a calibrated judgment against its source; contradicted claims
+   are replaced by a direct quote from the sources. If nothing relevant exists,
+   the answer is withheld. Most RAG demos stop at "here are some chunks".
 2. **Abstention as a feature.** A relevance judgment gates synthesis, so
    unknown questions cost nothing and return an honest "I don't have a memory
    of that yet" with zero citations.
@@ -243,8 +244,9 @@ and there is no durable memory left.
    changed, the current value answers and the stale source is not shown beside
    it. Historical questions ("where did she work before?") still get history.
 6. Otherwise the writer synthesizes only from the shortlist, and Jev verifies
-   every citation against its source. Contradicted sources are hidden; if all
-   fail, the answer is withheld.
+   every synthesized citation against its source. If every claim is
+   contradicted, Dejavu quotes the sources directly (marked unsupported) rather
+   than showing a wrong synthesis or a false "I don't know".
 
 ### Learning loop
 
@@ -425,7 +427,7 @@ Honest status of every claim in this README.
 |---|---|---|
 | Capture → Walrus mainnet blob | **Real, live, onchain** | ⬡ chip; `pnpm memwal:verify`; `GET /api/health` |
 | Semantic recall across sessions | **Real, live** | Ask in different words; citations show blob ids |
-| Citations verified against sources | **Real, live** | ✓ badges; `pnpm judge:verify` |
+| Citations verified against sources | **Real, live** | ✓ badges on synthesized citations; `pnpm judge:verify`; canonical facts are deterministic and unbadged |
 | Abstention on unknown questions | **Real, live** | Ask about Tokyo chess |
 | Per-user namespace isolation | **Real** | `pnpm verify:e2e` (isolation section) |
 | Agent reads the same blobs | **Real** | Native Walrus MCP; `docs/ops-agent.md` |
